@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['discogs_account_id', 'kind', 'status', 'is_full_reconciliation', 'items_seen', 'items_created', 'items_updated', 'items_removed', 'started_at', 'completed_at', 'error_message'])]
+#[Fillable(['discogs_account_id', 'kind', 'status', 'is_full_reconciliation', 'items_seen', 'items_created', 'items_updated', 'items_removed', 'last_completed_page', 'total_pages', 'total_items', 'started_at', 'completed_at', 'error_message'])]
 class DiscogsSyncRun extends Model
 {
     /** @use HasFactory<DiscogsSyncRunFactory> */
@@ -22,6 +22,7 @@ class DiscogsSyncRun extends Model
         'items_created' => 0,
         'items_updated' => 0,
         'items_removed' => 0,
+        'last_completed_page' => 0,
     ];
 
     /** @return BelongsTo<DiscogsAccount, $this> */
