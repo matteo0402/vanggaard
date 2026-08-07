@@ -106,6 +106,24 @@ test('Discogs collection identifiers remain separate and unique within an accoun
         ->and(Schema::hasColumns('collection_items', ['discogs_instance_id', 'discogs_folder_id']))->toBeFalse();
 });
 
+test('ownership indexes fit production database identifier limits', function () {
+    $storageLocationIndexes = collect(Schema::getIndexes('storage_locations'));
+    $indexNames = collect([
+        ...Schema::getIndexes('discogs_collection_instances'),
+        ...Schema::getIndexes('collection_item_storage_assignments'),
+        ...$storageLocationIndexes,
+    ])->pluck('name');
+
+    expect($indexNames)
+        ->toContain('instances_account_instance_unique')
+        ->toContain('storage_parent_owner_index')
+        ->toContain('storage_assignment_item_history_index')
+        ->toContain('storage_assignment_location_active_index');
+    expect($storageLocationIndexes->firstWhere('name', 'storage_parent_owner_index')['columns'])
+        ->toBe(['parent_id', 'user_id']);
+    $indexNames->each(fn (string $name) => expect(mb_strlen($name))->toBeLessThanOrEqual(64));
+});
+
 test('user-owned relationships reject cross-owner records', function () {
     $firstUser = User::factory()->create();
     $secondUser = User::factory()->create();
@@ -203,6 +221,41 @@ test('storage assignments preserve physical location history', function () {
         ->and($currentAssignment->removed_at)->toBeNull()
         ->and($item->storageAssignments()->count())->toBe(2)
         ->and($box->parent->is($room))->toBeTrue();
+});
+
+test('storage locations can only be removed when they have no children', function () {
+    $room = StorageLocation::factory()->create();
+    $box = StorageLocation::factory()->create([
+        'user_id' => $room->user_id,
+        'parent_id' => $room->id,
+        'kind' => 'box',
+    ]);
+
+    expect(fn () => $room->delete())->toThrow(QueryException::class);
+
+    $box->delete();
+    $room->delete();
+
+    $this->assertModelMissing($box);
+    $this->assertModelMissing($room);
+});
+
+test('an owner can only be removed after their storage hierarchy is safely emptied', function () {
+    $user = User::factory()->create();
+    $room = StorageLocation::factory()->create(['user_id' => $user->id]);
+    $box = StorageLocation::factory()->create([
+        'user_id' => $user->id,
+        'parent_id' => $room->id,
+        'kind' => 'box',
+    ]);
+
+    expect(fn () => $user->delete())->toThrow(QueryException::class);
+
+    $box->delete();
+    $room->delete();
+    $user->delete();
+
+    $this->assertModelMissing($user);
 });
 
 test('storage location names are unique among siblings including root locations', function () {
