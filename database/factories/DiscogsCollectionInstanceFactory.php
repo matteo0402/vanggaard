@@ -31,6 +31,7 @@ class DiscogsCollectionInstanceFactory extends Factory
                 return CollectionItem::factory()->create(['user_id' => $attributes['user_id']])->id;
             },
             'last_seen_sync_run_id' => null,
+            'missing_confirmed_sync_run_id' => null,
             'discogs_instance_id' => $discogsInstanceId,
             'discogs_folder_id' => fake()->optional()->numberBetween(1, 1000),
             'source_url' => fn (array $attributes): string => CollectionItem::query()

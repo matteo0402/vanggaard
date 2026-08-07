@@ -22,6 +22,12 @@ class CollectionItemFactory extends Factory
         return [
             'user_id' => User::factory(),
             'release_id' => Release::factory(),
+            'is_active' => true,
         ];
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (): array => ['is_active' => false]);
     }
 }

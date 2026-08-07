@@ -52,6 +52,10 @@ class ImportDiscogsCollectionPage implements ShouldBeUnique, ShouldQueue
         if ($result['next_page'] !== null) {
             self::dispatch($syncRun->id, $result['next_page']);
         }
+
+        if ($result['should_finalize']) {
+            FinalizeDiscogsCollectionReconciliation::dispatch($syncRun->id);
+        }
     }
 
     public function uniqueId(): string
