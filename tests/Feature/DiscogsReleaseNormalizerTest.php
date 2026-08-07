@@ -146,6 +146,52 @@ test('a partially missing response stores the release with empty optional relati
         ->and($release->videos()->count())->toBe(0);
 });
 
+test('Discogs unknown year sentinel is stored as null', function () {
+    $payload = [
+        'id' => 43,
+        'title' => 'Unknown Year Release',
+        'year' => 0,
+    ];
+
+    $release = app(DiscogsReleaseNormalizer::class)->normalize(
+        $payload,
+        CarbonImmutable::parse('2026-08-07 20:00:00'),
+    );
+
+    expect($release->released_year)->toBeNull()
+        ->and($release->raw_payload)->toBe($payload);
+});
+
+test('duplicate Discogs video URLs are normalized once', function () {
+    $payload = completeReleasePayload();
+    $payload['videos'][] = [
+        ...$payload['videos'][0],
+        'title' => 'Duplicate video entry',
+    ];
+
+    $release = app(DiscogsReleaseNormalizer::class)->normalize(
+        $payload,
+        CarbonImmutable::parse('2026-08-07 20:00:00'),
+    );
+
+    expect($release->videos()->count())->toBe(1)
+        ->and($release->videos()->sole()->title)->toBe('Keep On Dubbing')
+        ->and($release->raw_payload['videos'])->toHaveCount(2);
+});
+
+test('duplicate Discogs release artists are normalized once', function () {
+    $payload = completeReleasePayload();
+    $payload['artists'][] = $payload['artists'][0];
+
+    $release = app(DiscogsReleaseNormalizer::class)->normalize(
+        $payload,
+        CarbonImmutable::parse('2026-08-07 20:00:00'),
+    );
+
+    expect($release->artists()->count())->toBe(1)
+        ->and($release->raw_payload['artists'])->toHaveCount(2);
+});
+
 test('a partially missing refresh preserves source fields and relationships that were not returned', function () {
     $normalizer = app(DiscogsReleaseNormalizer::class);
     $release = $normalizer->normalize(

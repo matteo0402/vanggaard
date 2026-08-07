@@ -16,6 +16,8 @@ beforeEach(function () {
     Config::set('services.discogs', [
         'base_url' => 'https://api.discogs.test',
         'user_agent' => 'Vanggaard Test/1.0 +https://vanggaard.test',
+        'consumer_key' => '',
+        'consumer_secret' => '',
         'connect_timeout' => 2,
         'timeout' => 5,
         'requests_per_minute' => 50,
@@ -58,6 +60,29 @@ test('identity requests authenticate with required Discogs headers', function ()
         && $request->hasHeader('Authorization', 'Discogs token=secret-token')
         && $request->hasHeader('User-Agent', 'Vanggaard Test/1.0 +https://vanggaard.test'));
     Http::assertSentCount(1);
+});
+
+test('public collection requests can authenticate with consumer credentials', function () {
+    Config::set('services.discogs.consumer_key', 'consumer-key');
+    Config::set('services.discogs.consumer_secret', 'consumer-secret');
+
+    $account = DiscogsAccount::factory()->create([
+        'username' => 'selector',
+        'personal_access_token' => null,
+    ]);
+
+    Http::fake([
+        'https://api.discogs.test/users/selector/collection/folders' => Http::response([
+            'folders' => [['id' => 0, 'name' => 'All']],
+        ]),
+    ]);
+
+    app(DiscogsGateway::class)->folders($account);
+
+    Http::assertSent(fn (Request $request): bool => $request->hasHeader(
+        'Authorization',
+        'Discogs key=consumer-key, secret=consumer-secret',
+    ));
 });
 
 test('folders requests use the account collection endpoint', function () {

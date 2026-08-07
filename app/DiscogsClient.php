@@ -9,6 +9,7 @@ use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use LogicException;
 use Throwable;
 
 class DiscogsClient implements DiscogsGateway
@@ -22,6 +23,8 @@ class DiscogsClient implements DiscogsGateway
         private readonly int $retryAttempts,
         private readonly int $retryBaseDelay,
         private readonly int $retryMaxDelay,
+        private readonly string $consumerKey,
+        private readonly string $consumerSecret,
     ) {}
 
     /** @return array<string, mixed> */
@@ -89,7 +92,7 @@ class DiscogsClient implements DiscogsGateway
         return Http::baseUrl($this->baseUrl)
             ->withHeaders([
                 'Accept' => 'application/vnd.discogs.v2.discogs+json',
-                'Authorization' => "Discogs token={$account->personal_access_token}",
+                'Authorization' => $this->authorization($account),
                 'User-Agent' => $this->userAgent,
             ])
             ->connectTimeout($this->connectTimeout)
@@ -106,6 +109,19 @@ class DiscogsClient implements DiscogsGateway
                 fn (Throwable $exception): bool => $this->shouldRetry($exception),
                 throw: false,
             );
+    }
+
+    private function authorization(DiscogsAccount $account): string
+    {
+        if ($account->personal_access_token !== null) {
+            return "Discogs token={$account->personal_access_token}";
+        }
+
+        if ($this->consumerKey === '' || $this->consumerSecret === '') {
+            throw new LogicException('Discogs authentication credentials are not configured.');
+        }
+
+        return "Discogs key={$this->consumerKey}, secret={$this->consumerSecret}";
     }
 
     private function shouldRetry(Throwable $exception): bool

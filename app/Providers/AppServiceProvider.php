@@ -46,6 +46,8 @@ class AppServiceProvider extends ServiceProvider
                     retryAttempts: Config::integer('services.discogs.retry_attempts'),
                     retryBaseDelay: Config::integer('services.discogs.retry_base_delay'),
                     retryMaxDelay: Config::integer('services.discogs.retry_max_delay'),
+                    consumerKey: Config::string('services.discogs.consumer_key'),
+                    consumerSecret: Config::string('services.discogs.consumer_secret'),
                 );
             },
         );
