@@ -26,7 +26,6 @@ test('the owner can open application shell destinations', function (
             ->where('dataKind', $dataKind)
             ->has('description'));
 })->with([
-    'collection' => ['collection', 'Collection', 'mixed'],
     'DJ assistant' => ['assistant', 'DJ Assistant', 'personal'],
     'boxes' => ['boxes', 'Boxes', 'personal'],
     'labels' => ['labels', 'Labels', 'discogs'],

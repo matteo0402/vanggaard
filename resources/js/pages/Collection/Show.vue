@@ -1,0 +1,342 @@
+<script setup lang="ts">
+import { Form, Head, Link } from '@inertiajs/vue3';
+import ReleaseRefreshController from '@/actions/App/Http/Controllers/ReleaseRefreshController';
+import DiscogsAttribution from '@/components/DiscogsAttribution.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { collection } from '@/routes';
+
+defineOptions({ layout: AppLayout });
+
+type Value<T> = {
+    effective: T | null;
+    discogs: T | null;
+    is_corrected: boolean;
+};
+
+defineProps<{
+    release: {
+        id: number;
+        is_fresh: boolean;
+        values: { title: Value<string>; year: Value<number> };
+        discogs: {
+            discogs_id: number;
+            title: string;
+            country: string | null;
+            released: string | null;
+            released_year: number | null;
+            source_url: string;
+            image_url: string | null;
+            artists: Array<{ name: string; join: string | null }>;
+            labels: Array<{ name: string; catalog_number: string | null }>;
+            formats: Array<{
+                name: string;
+                quantity: number | null;
+                text: string | null;
+                descriptions: string[];
+            }>;
+            tracks: Array<{
+                position: string | null;
+                title: string;
+                duration: string | null;
+            }>;
+        } | null;
+        personal: { notes: string | null; rating: number | null };
+        physical_copies: Array<{ id: number; locations: string[] }>;
+        sync: {
+            status: 'idle' | 'queued' | 'refreshing' | 'failed';
+            fetched_at: string;
+            refresh_attempted_at: string | null;
+            refresh_failed_at: string | null;
+            error: string | null;
+        };
+    };
+}>();
+
+function formatTimestamp(timestamp: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+    }).format(new Date(timestamp));
+}
+</script>
+
+<template>
+    <div>
+        <Head :title="release.values.title.effective ?? 'Collection release'" />
+
+        <Link
+            :href="collection()"
+            class="inline-flex min-h-11 items-center rounded-lg text-sm font-semibold text-stone-400 transition hover:text-stone-100 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-amber-400"
+        >
+            <span aria-hidden="true" class="mr-2">←</span> Back to collection
+        </Link>
+
+        <section
+            class="mt-4 overflow-hidden rounded-3xl border border-white/10 bg-stone-900"
+        >
+            <template v-if="release.discogs">
+                <div class="grid lg:grid-cols-[minmax(18rem,0.8fr)_1.2fr]">
+                    <div class="aspect-square bg-stone-800 lg:aspect-auto">
+                        <img
+                            v-if="release.discogs.image_url"
+                            :src="release.discogs.image_url"
+                            :alt="`Cover of ${release.discogs.title}`"
+                            class="size-full object-cover"
+                        />
+                        <div
+                            v-else
+                            class="flex size-full min-h-80 items-center justify-center text-xs font-semibold tracking-[0.2em] text-stone-600 uppercase"
+                        >
+                            No cover image
+                        </div>
+                    </div>
+                    <div class="flex flex-col p-6 sm:p-9 lg:p-12">
+                        <p
+                            class="text-xs font-semibold tracking-[0.2em] text-amber-300 uppercase"
+                        >
+                            {{
+                                release.discogs.artists
+                                    .map((artist) => artist.name)
+                                    .join(' ') || 'Unknown artist'
+                            }}
+                        </p>
+                        <h1
+                            class="mt-3 text-4xl leading-tight font-semibold tracking-tight text-stone-50 sm:text-5xl"
+                        >
+                            {{ release.values.title.effective }}
+                        </h1>
+                        <div
+                            class="mt-5 flex flex-wrap gap-2 text-xs text-stone-300"
+                        >
+                            <span
+                                class="rounded-full border border-white/10 px-3 py-1.5"
+                                >{{
+                                    release.values.year.effective ??
+                                    'Year unknown'
+                                }}</span
+                            >
+                            <span
+                                v-if="release.discogs.country"
+                                class="rounded-full border border-white/10 px-3 py-1.5"
+                                >{{ release.discogs.country }}</span
+                            >
+                            <span
+                                v-for="format in release.discogs.formats"
+                                :key="`${format.name}-${format.text}`"
+                                class="rounded-full border border-white/10 px-3 py-1.5"
+                                >{{ format.name
+                                }}<template v-if="format.text">
+                                    / {{ format.text }}</template
+                                ></span
+                            >
+                        </div>
+                        <div
+                            v-if="release.values.year.is_corrected"
+                            class="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/8 px-4 py-3 text-sm text-emerald-200"
+                        >
+                            Effective year {{ release.values.year.effective }}.
+                            Original Discogs year
+                            {{ release.values.year.discogs ?? 'not supplied' }}.
+                        </div>
+                        <p class="mt-auto pt-8 text-sm text-stone-400">
+                            <DiscogsAttribution
+                                :source-url="release.discogs.source_url"
+                            />
+                            <span class="px-1 text-stone-700">/</span> Release
+                            #{{ release.discogs.discogs_id }}
+                        </p>
+                    </div>
+                </div>
+            </template>
+            <div v-else class="p-7 sm:p-10">
+                <p
+                    class="text-xs font-semibold tracking-[0.2em] text-stone-500 uppercase"
+                >
+                    Personal inventory only
+                </p>
+                <h1
+                    class="mt-3 text-3xl font-semibold tracking-tight text-stone-100"
+                >
+                    Discogs details are temporarily hidden
+                </h1>
+                <p class="mt-4 max-w-2xl text-sm leading-6 text-stone-400">
+                    The local source data is older than the six-hour display
+                    limit. Refresh this release to restore current catalog
+                    facts.
+                </p>
+            </div>
+        </section>
+
+        <div class="mt-6 grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
+            <section
+                aria-labelledby="track-list"
+                class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
+            >
+                <p
+                    class="text-xs font-semibold tracking-[0.18em] text-amber-300 uppercase"
+                >
+                    Discogs-sourced
+                </p>
+                <h2
+                    id="track-list"
+                    class="mt-2 text-2xl font-semibold tracking-tight text-stone-50"
+                >
+                    Track list
+                </h2>
+                <ol
+                    v-if="release.discogs?.tracks.length"
+                    class="mt-5 divide-y divide-white/8"
+                >
+                    <li
+                        v-for="track in release.discogs.tracks"
+                        :key="`${track.position}-${track.title}`"
+                        class="grid grid-cols-[3rem_1fr_auto] gap-3 py-3 text-sm"
+                    >
+                        <span class="font-mono text-stone-500">{{
+                            track.position ?? '—'
+                        }}</span>
+                        <span class="text-stone-200">{{ track.title }}</span>
+                        <span class="font-mono text-stone-500">{{
+                            track.duration ?? ''
+                        }}</span>
+                    </li>
+                </ol>
+                <p v-else class="mt-5 text-sm leading-6 text-stone-500">
+                    No current track listing is available.
+                </p>
+                <p
+                    v-if="release.discogs"
+                    class="mt-5 border-t border-white/8 pt-4 text-xs text-stone-500"
+                >
+                    <DiscogsAttribution
+                        :source-url="release.discogs.source_url"
+                    />
+                </p>
+            </section>
+
+            <div class="flex flex-col gap-6">
+                <section
+                    aria-labelledby="physical-copies"
+                    class="rounded-2xl border border-emerald-400/20 bg-emerald-400/6 p-6"
+                >
+                    <p
+                        class="text-xs font-semibold tracking-[0.18em] text-emerald-300 uppercase"
+                    >
+                        Yours
+                    </p>
+                    <h2
+                        id="physical-copies"
+                        class="mt-2 text-xl font-semibold text-stone-50"
+                    >
+                        Physical copies
+                    </h2>
+                    <ul class="mt-4 flex flex-col gap-3">
+                        <li
+                            v-for="copy in release.physical_copies"
+                            :key="copy.id"
+                            class="rounded-xl border border-emerald-300/15 bg-stone-950/40 p-4"
+                        >
+                            <p class="text-sm font-semibold text-stone-200">
+                                Copy #{{ copy.id }}
+                            </p>
+                            <p class="mt-1 text-xs leading-5 text-stone-400">
+                                {{
+                                    copy.locations.join(', ') ||
+                                    'No physical location assigned'
+                                }}
+                            </p>
+                        </li>
+                    </ul>
+                </section>
+
+                <section
+                    aria-labelledby="collector-notes"
+                    class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
+                >
+                    <p
+                        class="text-xs font-semibold tracking-[0.18em] text-emerald-300 uppercase"
+                    >
+                        Personal metadata
+                    </p>
+                    <h2
+                        id="collector-notes"
+                        class="mt-2 text-xl font-semibold text-stone-50"
+                    >
+                        Collector context
+                    </h2>
+                    <p
+                        class="mt-4 text-sm leading-6 whitespace-pre-line text-stone-300"
+                    >
+                        {{ release.personal.notes || 'No personal notes yet.' }}
+                    </p>
+                    <p class="mt-4 text-xs text-stone-500">
+                        Rating:
+                        {{
+                            release.personal.rating
+                                ? `${release.personal.rating}/5`
+                                : 'Not rated'
+                        }}
+                    </p>
+                </section>
+
+                <section
+                    aria-labelledby="sync-status"
+                    class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
+                >
+                    <div class="flex items-start justify-between gap-4">
+                        <div>
+                            <p
+                                class="text-xs font-semibold tracking-[0.18em] text-stone-500 uppercase"
+                            >
+                                Synchronization
+                            </p>
+                            <h2
+                                id="sync-status"
+                                class="mt-2 text-xl font-semibold text-stone-50 capitalize"
+                            >
+                                {{ release.sync.status }}
+                            </h2>
+                        </div>
+                        <span
+                            :class="[
+                                'size-3 rounded-full',
+                                release.is_fresh
+                                    ? 'bg-emerald-400'
+                                    : 'bg-amber-400',
+                            ]"
+                            :title="release.is_fresh ? 'Fresh' : 'Stale'"
+                        />
+                    </div>
+                    <p class="mt-3 text-xs leading-5 text-stone-500">
+                        Last fetched
+                        {{ formatTimestamp(release.sync.fetched_at) }}
+                    </p>
+                    <p
+                        v-if="release.sync.error"
+                        class="mt-3 rounded-lg border border-red-400/20 bg-red-400/8 p-3 text-xs leading-5 text-red-200"
+                    >
+                        {{ release.sync.error }}
+                    </p>
+                    <Form
+                        :action="ReleaseRefreshController(release.id)"
+                        #default="{ processing }"
+                        class="mt-5"
+                    >
+                        <button
+                            type="submit"
+                            :disabled="
+                                processing ||
+                                ['queued', 'refreshing'].includes(
+                                    release.sync.status,
+                                )
+                            "
+                            class="min-h-11 w-full rounded-full border border-amber-300/30 bg-amber-300/10 px-4 text-sm font-semibold text-amber-200 transition hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {{ processing ? 'Queueing…' : 'Refresh release' }}
+                        </button>
+                    </Form>
+                </section>
+            </div>
+        </div>
+    </div>
+</template>
