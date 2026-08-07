@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\DiscogsClient;
+use App\DiscogsGateway;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\ServiceProvider;
@@ -15,7 +18,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(
+            DiscogsGateway::class,
+            fn (): DiscogsClient => new DiscogsClient(
+                baseUrl: Config::string('services.discogs.base_url'),
+                userAgent: Config::string('services.discogs.user_agent'),
+                connectTimeout: Config::integer('services.discogs.connect_timeout'),
+                timeout: Config::integer('services.discogs.timeout'),
+            ),
+        );
     }
 
     /**

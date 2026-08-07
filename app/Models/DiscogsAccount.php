@@ -10,7 +10,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-/** @property int $user_id */
+/**
+ * @property int $user_id
+ * @property string $username
+ * @property string $personal_access_token
+ * @property string $source_url
+ */
 #[Fillable(['user_id', 'username', 'personal_access_token', 'source_url', 'fetched_at'])]
 #[Hidden(['personal_access_token'])]
 class DiscogsAccount extends Model
