@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int|null $released_year
+ * @property int $discogs_id
+ * @property array<string, mixed> $raw_payload
  * @property string $source_url
  * @property CarbonInterface $fetched_at
  */

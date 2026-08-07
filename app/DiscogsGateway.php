@@ -4,6 +4,7 @@ namespace App;
 
 use App\Models\DiscogsAccount;
 
+/** @phpstan-import-type DiscogsReleasePayload from DiscogsReleaseNormalizer */
 interface DiscogsGateway
 {
     /** @return array<string, mixed> */
@@ -18,6 +19,6 @@ interface DiscogsGateway
     /** @return array<string, mixed> */
     public function releaseInstance(DiscogsAccount $account, int $releaseId, int $instanceId): array;
 
-    /** @return array<string, mixed> */
+    /** @return DiscogsReleasePayload */
     public function release(DiscogsAccount $account, int $releaseId): array;
 }
