@@ -110,14 +110,14 @@ class DiscogsReleaseNormalizer
             'id' => ['required', 'integer', 'min:1'],
             'title' => ['required', 'string', 'max:255'],
             'master_id' => ['sometimes', 'nullable', 'integer', 'min:0'],
-            'year' => ['sometimes', 'nullable', 'integer', 'between:1,65535'],
+            'year' => ['sometimes', 'nullable', 'integer', 'between:0,65535'],
             'country' => ['sometimes', 'nullable', 'string', 'max:255'],
             'released' => ['sometimes', 'nullable', 'string', 'max:255'],
             'notes' => ['sometimes', 'nullable', 'string'],
             'data_quality' => ['sometimes', 'nullable', 'string', 'max:255'],
             'date_changed' => ['sometimes', 'nullable', 'date'],
             'artists' => ['sometimes', 'array'],
-            'artists.*.id' => ['required', 'integer', 'min:1', 'distinct'],
+            'artists.*.id' => ['required', 'integer', 'min:1'],
             'artists.*.name' => ['required', 'string', 'max:255'],
             'labels' => ['sometimes', 'array'],
             'labels.*.id' => ['required', 'integer', 'min:1', 'distinct'],
@@ -140,7 +140,7 @@ class DiscogsReleaseNormalizer
             'styles' => ['sometimes', 'array'],
             'styles.*' => ['string', 'max:255', 'distinct'],
             'videos' => ['sometimes', 'array'],
-            'videos.*.uri' => ['required', 'url', 'max:255', 'distinct'],
+            'videos.*.uri' => ['required', 'url', 'max:255'],
             'videos.*.title' => ['required', 'string', 'max:255'],
             'videos.*.duration' => ['sometimes', 'nullable', 'integer', 'min:0'],
             'videos.*.embed' => ['sometimes', 'boolean'],
@@ -156,7 +156,7 @@ class DiscogsReleaseNormalizer
     {
         $rows = [];
 
-        foreach ($artists as $position => $data) {
+        foreach (collect($artists)->unique('id')->values() as $position => $data) {
             $artist = $this->upsertArtist($data, $fetchedAt);
 
             $rows[] = [
@@ -314,15 +314,18 @@ class DiscogsReleaseNormalizer
      */
     private function normalizeVideos(Release $release, array $videos, CarbonInterface $fetchedAt): void
     {
-        $rows = collect($videos)->map(fn (array $data, int $position): array => [
-            'release_id' => $release->id,
-            'position' => $position,
-            'uri' => $data['uri'],
-            'title' => $data['title'],
-            'description' => Arr::get($data, 'description'),
-            'duration' => Arr::get($data, 'duration'),
-            'embed' => Arr::get($data, 'embed', false),
-        ])->all();
+        $rows = collect($videos)
+            ->unique('uri')
+            ->values()
+            ->map(fn (array $data, int $position): array => [
+                'release_id' => $release->id,
+                'position' => $position,
+                'uri' => $data['uri'],
+                'title' => $data['title'],
+                'description' => Arr::get($data, 'description'),
+                'duration' => Arr::get($data, 'duration'),
+                'embed' => Arr::get($data, 'embed', false),
+            ])->all();
 
         $this->reconcileRows(Video::class, $release, $rows, 'uri', $fetchedAt, true);
     }

@@ -38,6 +38,8 @@ return [
     'discogs' => [
         'base_url' => env('DISCOGS_API_URL', 'https://api.discogs.com'),
         'user_agent' => env('DISCOGS_USER_AGENT', 'Vanggaard/1.0 +https://github.com/matteo0402/vanggaard'),
+        'consumer_key' => env('DISCOGS_CONSUMER_KEY', ''),
+        'consumer_secret' => env('DISCOGS_CONSUMER_SECRET', ''),
         'connect_timeout' => (int) env('DISCOGS_CONNECT_TIMEOUT', 3),
         'timeout' => (int) env('DISCOGS_TIMEOUT', 10),
         'requests_per_minute' => (int) env('DISCOGS_REQUESTS_PER_MINUTE', 50),
