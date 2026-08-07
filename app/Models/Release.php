@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $source_url
  * @property CarbonInterface $fetched_at
  */
-#[Fillable(['discogs_id', 'master_discogs_id', 'title', 'country', 'released_year', 'released', 'notes', 'data_quality', 'source_url', 'fetched_at', 'discogs_changed_at', 'source_hash', 'image_urls'])]
+#[Fillable(['discogs_id', 'master_discogs_id', 'title', 'country', 'released_year', 'released', 'notes', 'data_quality', 'source_url', 'fetched_at', 'discogs_changed_at', 'source_hash', 'raw_payload', 'image_urls'])]
 class Release extends Model
 {
     /** @use HasFactory<ReleaseFactory> */
@@ -98,6 +98,7 @@ class Release extends Model
     {
         return [
             'image_urls' => 'array',
+            'raw_payload' => 'array',
             'fetched_at' => 'datetime',
             'discogs_changed_at' => 'datetime',
         ];
