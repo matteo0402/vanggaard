@@ -32,6 +32,7 @@ class ReleaseFactory extends Factory
             'fetched_at' => now(),
             'discogs_changed_at' => fake()->optional()->dateTimeBetween('-1 year'),
             'source_hash' => hash('sha256', fake()->uuid()),
+            'raw_payload' => [],
             'image_urls' => [],
         ];
     }
