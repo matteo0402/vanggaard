@@ -40,6 +40,10 @@ return [
         'user_agent' => env('DISCOGS_USER_AGENT', 'Vanggaard/1.0 +https://github.com/matteo0402/vanggaard'),
         'connect_timeout' => (int) env('DISCOGS_CONNECT_TIMEOUT', 3),
         'timeout' => (int) env('DISCOGS_TIMEOUT', 10),
+        'requests_per_minute' => (int) env('DISCOGS_REQUESTS_PER_MINUTE', 50),
+        'retry_attempts' => (int) env('DISCOGS_RETRY_ATTEMPTS', 3),
+        'retry_base_delay' => (int) env('DISCOGS_RETRY_BASE_DELAY', 250),
+        'retry_max_delay' => (int) env('DISCOGS_RETRY_MAX_DELAY', 5000),
     ],
 
 ];
