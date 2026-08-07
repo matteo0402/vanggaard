@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Form, Head } from '@inertiajs/vue3';
+import { destroy } from '@/actions/App/Http/Controllers/AuthenticatedSessionController';
 </script>
 
 <template>
@@ -10,6 +11,17 @@ import { Head } from '@inertiajs/vue3';
     <div
         class="flex min-h-screen flex-col items-center bg-[#FDFDFC] p-6 text-[#1b1b18] lg:justify-center lg:p-8 dark:bg-[#0a0a0a]"
     >
+        <Form
+            v-bind="destroy.form()"
+            class="absolute top-6 right-6 lg:top-8 lg:right-8"
+        >
+            <button
+                type="submit"
+                class="rounded-sm border border-black/15 bg-white px-4 py-2 text-sm font-medium hover:border-black/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f53003] dark:border-white/20 dark:bg-[#161615] dark:text-[#EDEDEC] dark:hover:border-white/40"
+            >
+                Log out
+            </button>
+        </Form>
         <div
             class="flex w-full items-center justify-center opacity-100 transition-opacity duration-750 lg:grow starting:opacity-0"
         >
