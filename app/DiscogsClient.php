@@ -3,10 +3,13 @@
 namespace App;
 
 use App\Models\DiscogsAccount;
+use Exception;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
+use Throwable;
 
 class DiscogsClient implements DiscogsGateway
 {
@@ -15,6 +18,10 @@ class DiscogsClient implements DiscogsGateway
         private readonly string $userAgent,
         private readonly int $connectTimeout,
         private readonly int $timeout,
+        private readonly DiscogsRateLimiter $rateLimiter,
+        private readonly int $retryAttempts,
+        private readonly int $retryBaseDelay,
+        private readonly int $retryMaxDelay,
     ) {}
 
     /** @return array<string, mixed> */
@@ -86,7 +93,57 @@ class DiscogsClient implements DiscogsGateway
                 'User-Agent' => $this->userAgent,
             ])
             ->connectTimeout($this->connectTimeout)
-            ->timeout($this->timeout);
+            ->timeout($this->timeout)
+            ->beforeSending(fn () => $this->rateLimiter->acquire())
+            ->afterResponse(function (Response $response): Response {
+                $this->rateLimiter->observe($response);
+
+                return $response;
+            })
+            ->retry(
+                $this->retryAttempts,
+                fn (int $attempt, Exception $exception): int => $this->retryDelay($attempt, $exception),
+                fn (Throwable $exception): bool => $this->shouldRetry($exception),
+                throw: false,
+            );
+    }
+
+    private function shouldRetry(Throwable $exception): bool
+    {
+        if ($exception instanceof ConnectionException) {
+            return true;
+        }
+
+        if (! $exception instanceof RequestException) {
+            return false;
+        }
+
+        return in_array($exception->response->status(), [429, 500, 502, 503, 504], true);
+    }
+
+    private function retryDelay(int $attempt, Exception $exception): int
+    {
+        if ($exception instanceof RequestException) {
+            $retryAfter = $exception->response->header('Retry-After');
+
+            if (ctype_digit($retryAfter)) {
+                return ((int) $retryAfter * 1000) + random_int(0, $this->retryBaseDelay);
+            }
+        }
+
+        $exponentialDelay = min(
+            $this->retryMaxDelay,
+            $this->retryBaseDelay * (2 ** ($attempt - 1)),
+        );
+        $jitterLimit = min($exponentialDelay, $this->retryMaxDelay - $exponentialDelay);
+        $backoff = $exponentialDelay + random_int(0, $jitterLimit);
+
+        if ($exception instanceof RequestException && $exception->response->status() === 429) {
+            return max($backoff, $this->rateLimiter->availableInMilliseconds())
+                + random_int(0, $this->retryBaseDelay);
+        }
+
+        return $backoff;
     }
 
     private function ensureSuccessful(Response $response): void

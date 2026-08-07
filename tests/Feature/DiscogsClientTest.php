@@ -8,6 +8,7 @@ use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 
 uses(LazilyRefreshDatabase::class);
 
@@ -17,9 +18,15 @@ beforeEach(function () {
         'user_agent' => 'Vanggaard Test/1.0 +https://vanggaard.test',
         'connect_timeout' => 2,
         'timeout' => 5,
+        'requests_per_minute' => 50,
+        'retry_attempts' => 3,
+        'retry_base_delay' => 100,
+        'retry_max_delay' => 1000,
     ]);
+    Config::set('cache.limiter', 'array');
 
     Http::preventStrayRequests();
+    Sleep::fake(syncWithCarbon: true);
 });
 
 function captureDiscogsException(Closure $callback): DiscogsRequestException
@@ -161,6 +168,114 @@ test('connection failures are transient and sanitized', function () {
         ->and($exception->statusCode)->toBeNull()
         ->and($exception->getMessage())->not->toContain($token)
         ->and($exception->context())->not->toContain($token);
+});
+
+test('all client instances share one request budget', function () {
+    Config::set('services.discogs.requests_per_minute', 1);
+
+    $firstAccount = DiscogsAccount::factory()->create(['username' => 'first-selector']);
+    $secondAccount = DiscogsAccount::factory()->create(['username' => 'second-selector']);
+
+    Http::fake([
+        'https://api.discogs.test/oauth/identity' => Http::response(['username' => $firstAccount->username]),
+        'https://api.discogs.test/users/second-selector/collection/folders' => Http::response(['folders' => []]),
+    ]);
+
+    app(DiscogsGateway::class)->identity($firstAccount);
+    app()->forgetInstance(DiscogsGateway::class);
+    app(DiscogsGateway::class)->folders($secondAccount);
+
+    Http::assertSentCount(2);
+    Sleep::assertSleptTimes(1);
+    Sleep::assertSlept(fn ($duration): bool => $duration->totalSeconds === 60.0);
+});
+
+test('Discogs response headers can exhaust the shared budget early', function () {
+    Config::set('services.discogs.requests_per_minute', 2);
+
+    $account = DiscogsAccount::factory()->create();
+
+    Http::fakeSequence()
+        ->push(['username' => $account->username], 200, [
+            'X-Discogs-Ratelimit' => '3',
+            'X-Discogs-Ratelimit-Remaining' => '1',
+        ])
+        ->push(['username' => $account->username]);
+
+    app(DiscogsGateway::class)->identity($account);
+    app(DiscogsGateway::class)->identity($account);
+
+    Http::assertSentCount(2);
+    Sleep::assertSleptTimes(1);
+});
+
+test('transient responses are retried', function (int $status) {
+    $account = DiscogsAccount::factory()->create();
+
+    Http::fakeSequence()
+        ->push(['message' => 'Try again'], $status)
+        ->push(['id' => 42]);
+
+    expect(app(DiscogsGateway::class)->release($account, 42))->toBe(['id' => 42]);
+
+    Http::assertSentCount(2);
+    Sleep::assertSleptTimes(1);
+})->with([429, 500, 502, 503, 504]);
+
+test('connection failures are retried', function () {
+    $account = DiscogsAccount::factory()->create();
+
+    Http::fakeSequence()
+        ->pushFailedConnection()
+        ->push(['id' => 42]);
+
+    expect(app(DiscogsGateway::class)->release($account, 42))->toBe(['id' => 42]);
+
+    Http::assertSentCount(2);
+    Sleep::assertSleptTimes(1);
+});
+
+test('normal client failures are not retried', function (int $status) {
+    $account = DiscogsAccount::factory()->create();
+
+    Http::fake([
+        'https://api.discogs.test/*' => Http::response(['message' => 'Do not retry'], $status),
+    ]);
+
+    captureDiscogsException(fn () => app(DiscogsGateway::class)->identity($account));
+
+    Http::assertSentCount(1);
+    Sleep::assertNeverSlept();
+})->with([400, 401, 403, 404, 422, 501]);
+
+test('retry after headers take precedence over exponential backoff', function () {
+    $account = DiscogsAccount::factory()->create();
+
+    Http::fakeSequence()
+        ->push(['message' => 'Slow down'], 429, ['Retry-After' => '3'])
+        ->push(['id' => 42]);
+
+    app(DiscogsGateway::class)->release($account, 42);
+
+    Sleep::assertSlept(
+        fn ($duration): bool => $duration->totalMilliseconds >= 3000.0
+            && $duration->totalMilliseconds <= 3100.0,
+    );
+});
+
+test('transient retry delays include bounded jitter', function () {
+    $account = DiscogsAccount::factory()->create();
+
+    Http::fakeSequence()
+        ->push(['message' => 'Try again'], 503)
+        ->push(['id' => 42]);
+
+    app(DiscogsGateway::class)->release($account, 42);
+
+    Sleep::assertSlept(
+        fn ($duration): bool => $duration->totalMilliseconds >= 100.0
+            && $duration->totalMilliseconds <= 200.0,
+    );
 });
 
 test('successful non-object responses are rejected as unexpected', function () {
