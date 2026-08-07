@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Form, Head, Link } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
 import ReleaseRefreshController from '@/actions/App/Http/Controllers/ReleaseRefreshController';
 import DiscogsAttribution from '@/components/DiscogsAttribution.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -13,7 +14,16 @@ type Value<T> = {
     is_corrected: boolean;
 };
 
-defineProps<{
+type ReleaseVideo = {
+    id: number;
+    title: string;
+    description: string | null;
+    duration: number | null;
+    external_url: string | null;
+    embed_url: string | null;
+};
+
+const props = defineProps<{
     release: {
         id: number;
         is_fresh: boolean;
@@ -39,6 +49,7 @@ defineProps<{
                 title: string;
                 duration: string | null;
             }>;
+            videos: ReleaseVideo[];
         } | null;
         personal: { notes: string | null; rating: number | null };
         physical_copies: Array<{ id: number; locations: string[] }>;
@@ -52,11 +63,32 @@ defineProps<{
     };
 }>();
 
+const selectedVideoId = ref(props.release.discogs?.videos[0]?.id ?? null);
+const selectedVideo = computed(
+    () =>
+        props.release.discogs?.videos.find(
+            (video) => video.id === selectedVideoId.value,
+        ) ??
+        props.release.discogs?.videos[0] ??
+        null,
+);
+
 function formatTimestamp(timestamp: string): string {
     return new Intl.DateTimeFormat(undefined, {
         dateStyle: 'medium',
         timeStyle: 'short',
     }).format(new Date(timestamp));
+}
+
+function formatDuration(duration: number | null): string | null {
+    if (duration === null) {
+        return null;
+    }
+
+    const minutes = Math.floor(duration / 60);
+    const seconds = String(duration % 60).padStart(2, '0');
+
+    return `${minutes}:${seconds}`;
 }
 </script>
 
@@ -168,51 +200,194 @@ function formatTimestamp(timestamp: string): string {
         </section>
 
         <div class="mt-6 grid gap-6 lg:grid-cols-[1.25fr_0.75fr]">
-            <section
-                aria-labelledby="track-list"
-                class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
-            >
-                <p
-                    class="text-xs font-semibold tracking-[0.18em] text-amber-300 uppercase"
+            <div class="flex flex-col gap-6">
+                <section
+                    aria-labelledby="track-list"
+                    class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
                 >
-                    Discogs-sourced
-                </p>
-                <h2
-                    id="track-list"
-                    class="mt-2 text-2xl font-semibold tracking-tight text-stone-50"
-                >
-                    Track list
-                </h2>
-                <ol
-                    v-if="release.discogs?.tracks.length"
-                    class="mt-5 divide-y divide-white/8"
-                >
-                    <li
-                        v-for="track in release.discogs.tracks"
-                        :key="`${track.position}-${track.title}`"
-                        class="grid grid-cols-[3rem_1fr_auto] gap-3 py-3 text-sm"
+                    <p
+                        class="text-xs font-semibold tracking-[0.18em] text-amber-300 uppercase"
                     >
-                        <span class="font-mono text-stone-500">{{
-                            track.position ?? '—'
-                        }}</span>
-                        <span class="text-stone-200">{{ track.title }}</span>
-                        <span class="font-mono text-stone-500">{{
-                            track.duration ?? ''
-                        }}</span>
-                    </li>
-                </ol>
-                <p v-else class="mt-5 text-sm leading-6 text-stone-500">
-                    No current track listing is available.
-                </p>
-                <p
-                    v-if="release.discogs"
-                    class="mt-5 border-t border-white/8 pt-4 text-xs text-stone-500"
+                        Discogs-sourced
+                    </p>
+                    <h2
+                        id="track-list"
+                        class="mt-2 text-2xl font-semibold tracking-tight text-stone-50"
+                    >
+                        Track list
+                    </h2>
+                    <ol
+                        v-if="release.discogs?.tracks.length"
+                        class="mt-5 divide-y divide-white/8"
+                    >
+                        <li
+                            v-for="track in release.discogs.tracks"
+                            :key="`${track.position}-${track.title}`"
+                            class="grid grid-cols-[3rem_1fr_auto] gap-3 py-3 text-sm"
+                        >
+                            <span class="font-mono text-stone-500">{{
+                                track.position ?? '—'
+                            }}</span>
+                            <span class="text-stone-200">{{
+                                track.title
+                            }}</span>
+                            <span class="font-mono text-stone-500">{{
+                                track.duration ?? ''
+                            }}</span>
+                        </li>
+                    </ol>
+                    <p v-else class="mt-5 text-sm leading-6 text-stone-500">
+                        No current track listing is available.
+                    </p>
+                    <p
+                        v-if="release.discogs"
+                        class="mt-5 border-t border-white/8 pt-4 text-xs text-stone-500"
+                    >
+                        <DiscogsAttribution
+                            :source-url="release.discogs.source_url"
+                        />
+                    </p>
+                </section>
+
+                <section
+                    aria-labelledby="release-videos"
+                    class="overflow-hidden rounded-2xl border border-white/10 bg-stone-900/70"
                 >
-                    <DiscogsAttribution
-                        :source-url="release.discogs.source_url"
-                    />
-                </p>
-            </section>
+                    <div class="p-6">
+                        <p
+                            class="text-xs font-semibold tracking-[0.18em] text-amber-300 uppercase"
+                        >
+                            Discogs-sourced
+                        </p>
+                        <h2
+                            id="release-videos"
+                            class="mt-2 text-2xl font-semibold tracking-tight text-stone-50"
+                        >
+                            Release videos
+                        </h2>
+                    </div>
+
+                    <template v-if="selectedVideo">
+                        <iframe
+                            v-if="selectedVideo.embed_url"
+                            :src="selectedVideo.embed_url"
+                            :title="selectedVideo.title"
+                            class="aspect-video w-full border-y border-white/10 bg-black"
+                            loading="lazy"
+                            referrerpolicy="strict-origin-when-cross-origin"
+                            sandbox="allow-scripts allow-same-origin allow-presentation"
+                            allow="
+                                accelerometer;
+                                autoplay;
+                                encrypted-media;
+                                gyroscope;
+                                picture-in-picture;
+                                web-share;
+                            "
+                            allowfullscreen
+                        />
+                        <div
+                            v-else
+                            class="flex aspect-video items-center justify-center border-y border-white/10 bg-stone-950 p-8 text-center"
+                        >
+                            <div>
+                                <p class="text-sm font-semibold text-stone-200">
+                                    This video cannot be embedded safely.
+                                </p>
+                                <a
+                                    v-if="selectedVideo.external_url"
+                                    :href="selectedVideo.external_url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="mt-4 inline-flex min-h-11 items-center rounded-full border border-amber-300/30 bg-amber-300/10 px-5 text-sm font-semibold text-amber-200 transition hover:bg-amber-300/15 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-amber-400"
+                                >
+                                    Open video externally
+                                </a>
+                                <p v-else class="mt-3 text-sm text-stone-500">
+                                    Its source link is no longer available.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="p-6">
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3 class="font-semibold text-stone-100">
+                                        {{ selectedVideo.title }}
+                                    </h3>
+                                    <p
+                                        v-if="selectedVideo.description"
+                                        class="mt-2 text-sm leading-6 text-stone-400"
+                                    >
+                                        {{ selectedVideo.description }}
+                                    </p>
+                                </div>
+                                <span
+                                    v-if="
+                                        formatDuration(selectedVideo.duration)
+                                    "
+                                    class="font-mono text-xs text-stone-500"
+                                >
+                                    {{ formatDuration(selectedVideo.duration) }}
+                                </span>
+                            </div>
+                            <a
+                                v-if="
+                                    selectedVideo.embed_url &&
+                                    selectedVideo.external_url
+                                "
+                                :href="selectedVideo.external_url"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-amber-300 transition hover:text-amber-200 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-amber-400"
+                            >
+                                Player unavailable? Open on YouTube
+                            </a>
+
+                            <div
+                                v-if="release.discogs!.videos.length > 1"
+                                class="mt-5 border-t border-white/8 pt-5"
+                            >
+                                <p class="text-xs font-semibold text-stone-500">
+                                    Choose a video
+                                </p>
+                                <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                    <button
+                                        v-for="video in release.discogs!.videos"
+                                        :key="video.id"
+                                        type="button"
+                                        :aria-pressed="
+                                            video.id === selectedVideo.id
+                                        "
+                                        :class="[
+                                            'min-h-11 rounded-xl border px-4 py-3 text-left text-sm transition focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-amber-400',
+                                            video.id === selectedVideo.id
+                                                ? 'border-amber-300/40 bg-amber-300/10 text-amber-100'
+                                                : 'border-white/10 bg-stone-950/40 text-stone-300 hover:border-white/20',
+                                        ]"
+                                        @click="selectedVideoId = video.id"
+                                    >
+                                        {{ video.title }}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <p
+                                class="mt-5 border-t border-white/8 pt-4 text-xs text-stone-500"
+                            >
+                                <DiscogsAttribution
+                                    :source-url="release.discogs!.source_url"
+                                />
+                            </p>
+                        </div>
+                    </template>
+                    <div v-else class="px-6 pb-6">
+                        <p class="text-sm leading-6 text-stone-500">
+                            No current release videos are available.
+                        </p>
+                    </div>
+                </section>
+            </div>
 
             <div class="flex flex-col gap-6">
                 <section

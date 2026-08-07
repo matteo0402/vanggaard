@@ -6,12 +6,15 @@ use App\Models\CollectionItem;
 use App\Models\Release;
 use App\Models\StorageLocation;
 use App\Models\User;
+use App\Models\Video;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 
 class CollectionCatalog
 {
+    public function __construct(private ReleaseVideoUrl $videoUrl) {}
+
     /** @return LengthAwarePaginator<int, array<string, mixed>> */
     public function for(User $user, ?string $search = null, int $page = 1): LengthAwarePaginator
     {
@@ -67,6 +70,9 @@ class CollectionCatalog
             'tracks' => fn ($query) => $query
                 ->whereNull('retired_at')
                 ->orderBy('sequence'),
+            'videos' => fn ($query) => $query
+                ->whereNull('retired_at')
+                ->orderBy('position'),
             'collectionItems' => fn ($query) => $query
                 ->displayableFor($user)
                 ->with(['storageAssignments' => fn ($query) => $query
@@ -218,6 +224,14 @@ class CollectionCatalog
                 'position' => $track->position,
                 'title' => $track->title,
                 'duration' => $track->duration,
+            ])->all(),
+            'videos' => $release->videos->map(fn (Video $video): array => [
+                'id' => $video->id,
+                'title' => $video->title,
+                'description' => $video->description,
+                'duration' => $video->duration,
+                'external_url' => $this->videoUrl->externalUrl($video->uri),
+                'embed_url' => $video->embed ? $this->videoUrl->embedUrl($video->uri) : null,
             ])->all(),
         ];
     }
