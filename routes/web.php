@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\AuthenticatedSessionController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\ReleaseRefreshController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -9,7 +11,7 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
-    Route::inertia('/', 'Welcome')->name('home');
+    Route::get('/', HomeController::class)->name('home');
     Route::inertia('/collection', 'Section', [
         'title' => 'Collection',
         'description' => 'Browse the records and release details in your local catalog.',
@@ -35,5 +37,7 @@ Route::middleware('auth')->group(function () {
         'description' => 'See the shape, strengths, and gaps in your collection.',
         'dataKind' => 'mixed',
     ])->name('statistics');
+    Route::post('/releases/{release}/refresh', ReleaseRefreshController::class)
+        ->name('releases.refresh');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });

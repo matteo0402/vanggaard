@@ -44,6 +44,10 @@ return [
         'retry_attempts' => (int) env('DISCOGS_RETRY_ATTEMPTS', 3),
         'retry_base_delay' => (int) env('DISCOGS_RETRY_BASE_DELAY', 250),
         'retry_max_delay' => (int) env('DISCOGS_RETRY_MAX_DELAY', 5000),
+        'stale_after_hours' => (int) env('DISCOGS_STALE_AFTER_HOURS', 4),
+        'stale_refresh_budget' => (int) env('DISCOGS_STALE_REFRESH_BUDGET', 10),
+        'refresh_failure_cooldown_minutes' => (int) env('DISCOGS_REFRESH_FAILURE_COOLDOWN_MINUTES', 60),
+        'high_priority_queue' => env('DISCOGS_HIGH_PRIORITY_QUEUE', 'high'),
     ],
 
 ];

@@ -64,7 +64,10 @@ return new class extends Migration
             $table->timestamp('fetched_at')->index();
             $table->timestamps();
 
-            $table->unique(['discogs_account_id', 'discogs_instance_id']);
+            $table->unique(
+                ['discogs_account_id', 'discogs_instance_id'],
+                'instances_account_instance_unique',
+            );
             $table->foreign(['discogs_account_id', 'user_id'], 'instances_account_owner_foreign')
                 ->references(['id', 'user_id'])->on('discogs_accounts')->cascadeOnDelete();
             $table->foreign(['collection_item_id', 'user_id'], 'instances_item_owner_foreign')
@@ -144,8 +147,9 @@ return new class extends Migration
             $table->unique(['id', 'user_id']);
             $table->unique(['user_id', 'parent_scope_id', 'kind', 'name'], 'storage_sibling_name_unique');
             $table->index(['user_id', 'parent_id', 'position']);
+            $table->index(['parent_id', 'user_id'], 'storage_parent_owner_index');
             $table->foreign(['parent_id', 'user_id'], 'storage_parent_owner_foreign')
-                ->references(['id', 'user_id'])->on('storage_locations')->cascadeOnDelete();
+                ->references(['id', 'user_id'])->on('storage_locations')->restrictOnDelete();
         });
 
         Schema::create('collection_item_storage_assignments', function (Blueprint $table) {
@@ -157,8 +161,14 @@ return new class extends Migration
             $table->timestamp('removed_at')->nullable()->index();
             $table->timestamps();
 
-            $table->index(['collection_item_id', 'removed_at', 'stored_at']);
-            $table->index(['storage_location_id', 'removed_at']);
+            $table->index(
+                ['collection_item_id', 'removed_at', 'stored_at'],
+                'storage_assignment_item_history_index',
+            );
+            $table->index(
+                ['storage_location_id', 'removed_at'],
+                'storage_assignment_location_active_index',
+            );
             $table->foreign(['collection_item_id', 'user_id'], 'storage_assignment_item_owner_foreign')
                 ->references(['id', 'user_id'])->on('collection_items')->cascadeOnDelete();
             $table->foreign(['storage_location_id', 'user_id'], 'storage_assignment_location_owner_foreign')

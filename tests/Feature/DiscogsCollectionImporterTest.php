@@ -3,6 +3,7 @@
 use App\DiscogsCollectionImporter;
 use App\DiscogsFailure;
 use App\DiscogsGateway;
+use App\DiscogsReleaseRefresher;
 use App\DiscogsRequestException;
 use App\Jobs\ImportDiscogsCollectionPage;
 use App\Jobs\RefreshDiscogsRelease;
@@ -118,6 +119,7 @@ test('a page imports distinct physical copies and queues one missing release ref
     (new ImportDiscogsCollectionPage($syncRun->id, 1))->handle(
         $discogs,
         app(DiscogsCollectionImporter::class),
+        app(DiscogsReleaseRefresher::class),
     );
 
     $syncRun->refresh();
@@ -131,7 +133,8 @@ test('a page imports distinct physical copies and queues one missing release ref
         ->completed_at->not->toBeNull()
         ->and(CollectionItem::query()->count())->toBe(2)
         ->and(DiscogsCollectionInstance::query()->pluck('discogs_instance_id')->all())->toBe([101, 102])
-        ->and(Release::query()->where('discogs_id', 42)->firstOrFail()->raw_payload)->toBe([]);
+        ->and(Release::query()->where('discogs_id', 42)->firstOrFail()->raw_payload)->toBe([])
+        ->and(Release::query()->where('discogs_id', 42)->firstOrFail()->refresh_status)->toBe('queued');
     Queue::assertPushedTimes(RefreshDiscogsRelease::class, 1);
 });
 
@@ -150,6 +153,7 @@ test('large collections continue one queued page at a time', function () {
     (new ImportDiscogsCollectionPage($syncRun->id, 1))->handle(
         $discogs,
         app(DiscogsCollectionImporter::class),
+        app(DiscogsReleaseRefresher::class),
     );
 
     expect($syncRun->refresh())
@@ -184,6 +188,7 @@ test('existing release metadata is refreshed within the four hour collection cyc
     (new ImportDiscogsCollectionPage($syncRun->id, 1))->handle(
         $discogs,
         app(DiscogsCollectionImporter::class),
+        app(DiscogsReleaseRefresher::class),
     );
 
     Queue::assertPushed(
@@ -205,7 +210,11 @@ test('retrying an interrupted request resumes from the unchanged checkpoint', fu
     );
     $job = new ImportDiscogsCollectionPage($syncRun->id, 1);
 
-    expect(fn () => $job->handle($discogs, app(DiscogsCollectionImporter::class)))
+    expect(fn () => $job->handle(
+        $discogs,
+        app(DiscogsCollectionImporter::class),
+        app(DiscogsReleaseRefresher::class),
+    ))
         ->toThrow(DiscogsRequestException::class)
         ->and($syncRun->refresh()->last_completed_page)->toBe(0)
         ->and(CollectionItem::query()->count())->toBe(0);
@@ -215,7 +224,11 @@ test('retrying an interrupted request resumes from the unchanged checkpoint', fu
     $discogs->shouldReceive('collectionPage')->once()->andReturn(
         collectionPage(releases: [collectionRelease(1, 42)]),
     );
-    $job->handle($discogs, app(DiscogsCollectionImporter::class));
+    $job->handle(
+        $discogs,
+        app(DiscogsCollectionImporter::class),
+        app(DiscogsReleaseRefresher::class),
+    );
 
     expect($syncRun->refresh())
         ->status->toBe('completed')

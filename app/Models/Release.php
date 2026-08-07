@@ -12,16 +12,23 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property int|null $released_year
+ * @property int $id
  * @property int $discogs_id
+ * @property string $refresh_status
  * @property array<string, mixed> $raw_payload
  * @property string $source_url
+ * @property string $title
  * @property CarbonInterface $fetched_at
  */
-#[Fillable(['discogs_id', 'master_discogs_id', 'title', 'country', 'released_year', 'released', 'notes', 'data_quality', 'source_url', 'fetched_at', 'discogs_changed_at', 'source_hash', 'raw_payload', 'image_urls'])]
+#[Fillable(['discogs_id', 'master_discogs_id', 'title', 'country', 'released_year', 'released', 'notes', 'data_quality', 'source_url', 'fetched_at', 'refresh_status', 'refresh_attempted_at', 'refresh_failed_at', 'refresh_error', 'discogs_changed_at', 'source_hash', 'raw_payload', 'image_urls'])]
 class Release extends Model
 {
     /** @use HasFactory<ReleaseFactory> */
     use HasFactory;
+
+    protected $attributes = [
+        'refresh_status' => 'idle',
+    ];
 
     /** @return HasMany<CollectionItem, $this> */
     public function collectionItems(): HasMany
@@ -102,6 +109,8 @@ class Release extends Model
             'image_urls' => 'array',
             'raw_payload' => 'array',
             'fetched_at' => 'datetime',
+            'refresh_attempted_at' => 'datetime',
+            'refresh_failed_at' => 'datetime',
             'discogs_changed_at' => 'datetime',
         ];
     }
