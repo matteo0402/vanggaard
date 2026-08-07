@@ -1,0 +1,31 @@
+<?php
+
+namespace App\Models;
+
+use Database\Factories\RiddimFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+
+#[Fillable(['user_id', 'name'])]
+class Riddim extends Model
+{
+    /** @use HasFactory<RiddimFactory> */
+    use HasFactory;
+
+    /** @return BelongsTo<User, $this> */
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /** @return BelongsToMany<CollectionItem, $this> */
+    public function collectionItems(): BelongsToMany
+    {
+        return $this->belongsToMany(CollectionItem::class)
+            ->withPivotValue('user_id', $this->user_id)
+            ->withTimestamps();
+    }
+}
