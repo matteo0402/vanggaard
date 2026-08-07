@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Database\Factories\CollectionItemFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -66,6 +67,25 @@ class CollectionItem extends Model
     public function storageAssignments(): HasMany
     {
         return $this->hasMany(CollectionItemStorageAssignment::class);
+    }
+
+    /** @param Builder<CollectionItem> $query */
+    public function scopeDisplayableFor(Builder $query, User $user): void
+    {
+        $query
+            ->whereBelongsTo($user)
+            ->where('is_active', true)
+            ->where(function (Builder $query): void {
+                $query->whereDoesntHave('discogsCollectionInstance')
+                    ->orWhereHas(
+                        'discogsCollectionInstance',
+                        fn (Builder $query): Builder => $query->where(
+                            'fetched_at',
+                            '>',
+                            now()->subHours(Release::DISPLAY_MAX_AGE_HOURS),
+                        ),
+                    );
+            });
     }
 
     /** @return array<string, string> */

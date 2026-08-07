@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property int|null $corrected_year
+ * @property int|null $rating
+ * @property string|null $personal_notes
  */
 #[Fillable(['user_id', 'release_id', 'personal_notes', 'rating', 'corrected_year'])]
 class PersonalReleaseMetadata extends Model
@@ -35,7 +37,7 @@ class PersonalReleaseMetadata extends Model
             return $this->corrected_year;
         }
 
-        if ($this->release === null || $this->release->fetched_at->lessThanOrEqualTo(now()->subHours(6))) {
+        if ($this->release === null || ! $this->release->isFreshForDisplay()) {
             return null;
         }
 

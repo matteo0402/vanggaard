@@ -7,11 +7,20 @@ use App\Models\User;
 
 class ReleasePolicy
 {
+    public function view(User $user, Release $release): bool
+    {
+        return $this->ownsActiveCopy($user, $release);
+    }
+
     public function refresh(User $user, Release $release): bool
     {
+        return $this->ownsActiveCopy($user, $release);
+    }
+
+    private function ownsActiveCopy(User $user, Release $release): bool
+    {
         return $release->collectionItems()
-            ->whereBelongsTo($user)
-            ->where('is_active', true)
+            ->displayableFor($user)
             ->exists();
     }
 }

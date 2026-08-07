@@ -15,14 +15,21 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $id
  * @property int $discogs_id
  * @property string $refresh_status
+ * @property string|null $country
+ * @property string|null $released
+ * @property string|null $refresh_error
  * @property array<string, mixed> $raw_payload
  * @property string $source_url
  * @property string $title
  * @property CarbonInterface $fetched_at
+ * @property CarbonInterface|null $refresh_attempted_at
+ * @property CarbonInterface|null $refresh_failed_at
  */
 #[Fillable(['discogs_id', 'master_discogs_id', 'title', 'country', 'released_year', 'released', 'notes', 'data_quality', 'source_url', 'fetched_at', 'refresh_status', 'refresh_attempted_at', 'refresh_failed_at', 'refresh_error', 'discogs_changed_at', 'source_hash', 'raw_payload', 'image_urls'])]
 class Release extends Model
 {
+    public const DISPLAY_MAX_AGE_HOURS = 6;
+
     /** @use HasFactory<ReleaseFactory> */
     use HasFactory;
 
@@ -100,6 +107,11 @@ class Release extends Model
     public function videos(): HasMany
     {
         return $this->hasMany(Video::class);
+    }
+
+    public function isFreshForDisplay(): bool
+    {
+        return $this->fetched_at->gt(now()->subHours(self::DISPLAY_MAX_AGE_HOURS));
     }
 
     /** @return array<string, string> */

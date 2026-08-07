@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthenticatedSessionController;
+use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ReleaseRefreshController;
 use Illuminate\Support\Facades\Route;
@@ -12,11 +13,8 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::get('/', HomeController::class)->name('home');
-    Route::inertia('/collection', 'Section', [
-        'title' => 'Collection',
-        'description' => 'Browse the records and release details in your local catalog.',
-        'dataKind' => 'mixed',
-    ])->name('collection');
+    Route::get('/collection', [CollectionController::class, 'index'])->name('collection');
+    Route::get('/collection/{release}', [CollectionController::class, 'show'])->name('collection.show');
     Route::inertia('/dj-assistant', 'Section', [
         'title' => 'DJ Assistant',
         'description' => 'Build sets from records you own and the context you add.',

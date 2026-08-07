@@ -2,17 +2,13 @@
 
 namespace App;
 
+use App\Models\CollectionItem;
 use App\Models\DiscogsSyncRun;
 use App\Models\Release;
 use App\Models\User;
-use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Date;
 
 class DiscogsSynchronizationStatus
 {
-    private const DISPLAY_MAX_AGE_HOURS = 6;
-
     /** @return array<string, mixed> */
     public function for(User $user, int $refreshPage = 1): array
     {
@@ -44,11 +40,9 @@ class DiscogsSynchronizationStatus
             ->where('status', 'completed')
             ->latest('completed_at')
             ->first();
-        $ownedReleases = Release::query()->whereHas(
-            'collectionItems',
-            fn (Builder $query): Builder => $query
-                ->whereBelongsTo($user)
-                ->where('is_active', true),
+        $ownedReleases = Release::query()->whereIn(
+            'id',
+            CollectionItem::query()->displayableFor($user)->select('release_id'),
         );
 
         return [
@@ -71,8 +65,7 @@ class DiscogsSynchronizationStatus
             ],
             'refreshable_releases' => (clone $ownedReleases)
                 ->with(['collectionItems' => fn ($query) => $query
-                    ->whereBelongsTo($user)
-                    ->where('is_active', true)
+                    ->displayableFor($user)
                     ->oldest('id')])
                 ->oldest('fetched_at')
                 ->oldest('id')
@@ -84,9 +77,7 @@ class DiscogsSynchronizationStatus
     /** @return array<string, int|string|bool|null> */
     private function refreshableRelease(Release $release): array
     {
-        $isFresh = $release->fetched_at->gt(
-            CarbonImmutable::instance(Date::now())->subHours(self::DISPLAY_MAX_AGE_HOURS),
-        );
+        $isFresh = $release->isFreshForDisplay();
 
         return [
             'id' => $release->id,
