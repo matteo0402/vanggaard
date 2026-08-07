@@ -3,14 +3,16 @@
 namespace App\Jobs;
 
 use App\DiscogsCollectionImporter;
+use App\DiscogsFailureMessage;
 use App\DiscogsGateway;
+use App\DiscogsReleaseRefresher;
 use App\Models\DiscogsAccount;
 use App\Models\DiscogsSyncRun;
+use App\Models\Release;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Date;
-use Illuminate\Support\Str;
 use Throwable;
 
 class ImportDiscogsCollectionPage implements ShouldBeUnique, ShouldQueue
@@ -29,8 +31,11 @@ class ImportDiscogsCollectionPage implements ShouldBeUnique, ShouldQueue
         public int $page,
     ) {}
 
-    public function handle(DiscogsGateway $discogs, DiscogsCollectionImporter $importer): void
-    {
+    public function handle(
+        DiscogsGateway $discogs,
+        DiscogsCollectionImporter $importer,
+        DiscogsReleaseRefresher $refresher,
+    ): void {
         $syncRun = DiscogsSyncRun::query()->find($this->syncRunId);
 
         if ($syncRun === null) {
@@ -46,7 +51,8 @@ class ImportDiscogsCollectionPage implements ShouldBeUnique, ShouldQueue
         );
 
         foreach ($result['release_ids_needing_refresh'] as $releaseId) {
-            RefreshDiscogsRelease::dispatch($account->id, $releaseId);
+            $release = Release::query()->where('discogs_id', $releaseId)->firstOrFail();
+            $refresher->queue($account, $release);
         }
 
         if ($result['next_page'] !== null) {
@@ -70,7 +76,7 @@ class ImportDiscogsCollectionPage implements ShouldBeUnique, ShouldQueue
             ->where('status', '!=', 'completed')
             ->update([
                 'status' => 'failed',
-                'error_message' => Str::limit($exception?->getMessage() ?? 'Collection import failed.', 2000),
+                'error_message' => DiscogsFailureMessage::collection($exception),
             ]);
     }
 }

@@ -50,7 +50,7 @@ Do not use `composer setup` as a production release command. It installs develop
 Run at least one continuously supervised Redis worker:
 
 ```shell
-php artisan queue:work redis --sleep=1 --tries=3 --timeout=60 --max-time=3600
+php artisan queue:work redis --queue=high,default --sleep=1 --tries=3 --timeout=80 --max-time=3600
 ```
 
 The process manager must restart failed or gracefully exited workers, capture their logs, and allow at least the longest job duration during shutdown. `REDIS_QUEUE_RETRY_AFTER` must remain greater than the worker timeout and every job-specific timeout to prevent duplicate processing.

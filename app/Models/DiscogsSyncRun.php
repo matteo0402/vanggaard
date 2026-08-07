@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Database\Factories\DiscogsSyncRunFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -9,6 +10,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string $status
+ * @property int $items_seen
+ * @property int $items_created
+ * @property int $items_updated
+ * @property int $items_removed
+ * @property int $last_completed_page
+ * @property int|null $total_pages
+ * @property int|null $total_items
+ * @property CarbonInterface|null $completed_at
+ * @property string|null $error_message
+ */
 #[Fillable(['discogs_account_id', 'kind', 'status', 'is_full_reconciliation', 'items_seen', 'items_created', 'items_updated', 'items_removed', 'last_completed_page', 'total_pages', 'total_items', 'started_at', 'completed_at', 'error_message'])]
 class DiscogsSyncRun extends Model
 {

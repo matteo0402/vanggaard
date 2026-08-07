@@ -3,6 +3,7 @@
 use App\DiscogsCollectionImporter;
 use App\DiscogsFailure;
 use App\DiscogsGateway;
+use App\DiscogsReleaseRefresher;
 use App\DiscogsRequestException;
 use App\Jobs\FinalizeDiscogsCollectionReconciliation;
 use App\Jobs\ImportDiscogsCollectionPage;
@@ -72,6 +73,7 @@ test('the last manifest page queues finalization without completing the run', fu
     (new ImportDiscogsCollectionPage($syncRun->id, 1))->handle(
         $discogs,
         app(DiscogsCollectionImporter::class),
+        app(DiscogsReleaseRefresher::class),
     );
 
     expect($syncRun->refresh())
