@@ -2,6 +2,7 @@
 
 namespace App;
 
+use App\Jobs\FinalizeDiscogsCollectionReconciliation;
 use App\Jobs\ImportDiscogsCollectionPage;
 use App\Models\CollectionItem;
 use App\Models\DiscogsAccount;
@@ -10,13 +11,17 @@ use App\Models\DiscogsSyncRun;
 use App\Models\Release;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
+use LogicException;
 
 class DiscogsCollectionImporter
 {
+    private const RECONCILIATION_CONFIRMATION_CHUNK_SIZE = 25;
+
     /**
      * Start or resume the account's initial collection import.
      */
@@ -53,8 +58,47 @@ class DiscogsCollectionImporter
     }
 
     /**
+     * Start or resume a full collection reconciliation.
+     */
+    public function startReconciliation(DiscogsAccount $account): DiscogsSyncRun
+    {
+        $syncRun = DB::transaction(function () use ($account): DiscogsSyncRun {
+            DiscogsAccount::query()->whereKey($account)->lockForUpdate()->firstOrFail();
+
+            $activeSyncRun = $account->syncRuns()
+                ->where('kind', 'collection_reconciliation')
+                ->whereIn('status', ['pending', 'running', 'failed'])
+                ->latest('id')
+                ->first();
+
+            if ($activeSyncRun !== null) {
+                $activeSyncRun->update([
+                    'status' => 'pending',
+                    'error_message' => null,
+                ]);
+
+                return $activeSyncRun;
+            }
+
+            return $account->syncRuns()->create([
+                'kind' => 'collection_reconciliation',
+                'status' => 'pending',
+                'is_full_reconciliation' => true,
+            ]);
+        });
+
+        if ($this->pagesAreComplete($syncRun)) {
+            FinalizeDiscogsCollectionReconciliation::dispatch($syncRun->id);
+        } else {
+            ImportDiscogsCollectionPage::dispatch($syncRun->id, $syncRun->last_completed_page + 1);
+        }
+
+        return $syncRun;
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
-     * @return array{next_page: int|null, release_ids_needing_refresh: list<int>}
+     * @return array{next_page: int|null, release_ids_needing_refresh: list<int>, should_finalize: bool}
      */
     public function importPage(
         DiscogsSyncRun $syncRun,
@@ -65,17 +109,22 @@ class DiscogsCollectionImporter
         $validated = $this->validatePage($page, $payload);
 
         return DB::transaction(function () use ($syncRun, $page, $validated, $fetchedAt): array {
+            $account = DiscogsAccount::query()
+                ->whereKey($syncRun->discogs_account_id)
+                ->lockForUpdate()
+                ->firstOrFail();
             $lockedSyncRun = DiscogsSyncRun::query()->lockForUpdate()->findOrFail($syncRun->id);
 
             if ($page <= $lockedSyncRun->last_completed_page) {
                 return [
                     'next_page' => $this->nextPage($lockedSyncRun),
                     'release_ids_needing_refresh' => $this->releaseIdsNeedingRefresh($validated['releases'], $fetchedAt),
+                    'should_finalize' => $lockedSyncRun->is_full_reconciliation && $this->pagesAreComplete($lockedSyncRun),
                 ];
             }
 
             if ($lockedSyncRun->status === 'completed') {
-                return ['next_page' => null, 'release_ids_needing_refresh' => []];
+                return ['next_page' => null, 'release_ids_needing_refresh' => [], 'should_finalize' => false];
             }
 
             if ($page !== $lockedSyncRun->last_completed_page + 1) {
@@ -84,12 +133,12 @@ class DiscogsCollectionImporter
                 ]);
             }
 
-            $account = DiscogsAccount::query()->findOrFail($lockedSyncRun->discogs_account_id);
             $releases = collect($validated['releases'])
                 ->unique('instance_id')
                 ->values();
             $itemsCreated = 0;
             $itemsUpdated = 0;
+            $itemsSeen = 0;
             $releaseIdsNeedingRefresh = [];
 
             foreach ($releases as $collectionRelease) {
@@ -101,24 +150,50 @@ class DiscogsCollectionImporter
                     ->first();
 
                 if ($instance === null) {
-                    $collectionItem = CollectionItem::query()->create([
-                        'user_id' => $account->user_id,
-                        'release_id' => $release->id,
-                    ]);
+                    $collectionItem = CollectionItem::query()
+                        ->whereBelongsTo($account->user)
+                        ->whereBelongsTo($release)
+                        ->where('is_active', false)
+                        ->whereDoesntHave('discogsCollectionInstance')
+                        ->oldest('id')
+                        ->lockForUpdate()
+                        ->first();
+
+                    if ($collectionItem === null) {
+                        $collectionItem = CollectionItem::query()->create([
+                            'user_id' => $account->user_id,
+                            'release_id' => $release->id,
+                        ]);
+                        $itemsCreated++;
+                    } else {
+                        $collectionItem->update(['is_active' => true]);
+                        $itemsUpdated++;
+                    }
+
                     $instance = new DiscogsCollectionInstance([
                         'collection_item_id' => $collectionItem->id,
                         'user_id' => $account->user_id,
                         'discogs_instance_id' => $collectionRelease['instance_id'],
                     ]);
                     $instance->discogsAccount()->associate($account);
-                    $itemsCreated++;
                 } else {
-                    $instance->collectionItem()->update(['release_id' => $release->id]);
-                    $itemsUpdated++;
+                    if ($instance->last_seen_sync_run_id !== $lockedSyncRun->id) {
+                        $itemsUpdated++;
+                    }
+
+                    $instance->collectionItem()->update([
+                        'release_id' => $release->id,
+                        'is_active' => true,
+                    ]);
+                }
+
+                if ($instance->last_seen_sync_run_id !== $lockedSyncRun->id) {
+                    $itemsSeen++;
                 }
 
                 $instance->fill([
                     'last_seen_sync_run_id' => $lockedSyncRun->id,
+                    'missing_confirmed_sync_run_id' => null,
                     'discogs_folder_id' => $collectionRelease['folder_id'] ?? null,
                     'source_url' => $release->source_url,
                     'fetched_at' => $fetchedAt,
@@ -130,10 +205,11 @@ class DiscogsCollectionImporter
             }
 
             $totalPages = $validated['pagination']['pages'];
-            $isComplete = $page >= max(1, $totalPages);
+            $pagesAreComplete = $page >= max(1, $totalPages);
+            $isComplete = $pagesAreComplete && ! $lockedSyncRun->is_full_reconciliation;
             $lockedSyncRun->fill([
                 'status' => $isComplete ? 'completed' : 'running',
-                'items_seen' => $lockedSyncRun->items_seen + $releases->count(),
+                'items_seen' => $lockedSyncRun->items_seen + $itemsSeen,
                 'items_created' => $lockedSyncRun->items_created + $itemsCreated,
                 'items_updated' => $lockedSyncRun->items_updated + $itemsUpdated,
                 'last_completed_page' => $page,
@@ -145,9 +221,98 @@ class DiscogsCollectionImporter
             ])->save();
 
             return [
-                'next_page' => $isComplete ? null : $page + 1,
+                'next_page' => $pagesAreComplete ? null : $page + 1,
                 'release_ids_needing_refresh' => array_values(array_unique($releaseIdsNeedingRefresh)),
+                'should_finalize' => $pagesAreComplete && $lockedSyncRun->is_full_reconciliation,
             ];
+        }, attempts: 3);
+    }
+
+    public function finalizeReconciliation(
+        DiscogsSyncRun $syncRun,
+        DiscogsGateway $discogs,
+        CarbonInterface $completedAt,
+    ): bool {
+        $syncRun->refresh();
+
+        if ($syncRun->status === 'completed') {
+            return true;
+        }
+
+        if (! $syncRun->is_full_reconciliation || ! $this->pagesAreComplete($syncRun)) {
+            throw new LogicException('Only fully imported reconciliation runs can be finalized.');
+        }
+
+        $account = DiscogsAccount::query()->findOrFail($syncRun->discogs_account_id);
+        $candidates = $this->pendingReconciliationCandidates($syncRun)
+            ->oldest('id')
+            ->limit(self::RECONCILIATION_CONFIRMATION_CHUNK_SIZE)
+            ->get();
+
+        foreach ($candidates as $instance) {
+            try {
+                $discogs->releaseInstance(
+                    $account,
+                    $instance->collectionItem->release->discogs_id,
+                    $instance->discogs_instance_id,
+                );
+                $this->pendingReconciliationCandidates($syncRun)
+                    ->whereKey($instance)
+                    ->update([
+                        'last_seen_sync_run_id' => $syncRun->id,
+                        'missing_confirmed_sync_run_id' => null,
+                    ]);
+            } catch (DiscogsRequestException $exception) {
+                if ($exception->failure !== DiscogsFailure::NotFound) {
+                    throw $exception;
+                }
+
+                $this->pendingReconciliationCandidates($syncRun)
+                    ->whereKey($instance)
+                    ->update(['missing_confirmed_sync_run_id' => $syncRun->id]);
+            }
+        }
+
+        if ($this->pendingReconciliationCandidates($syncRun)->exists()) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($syncRun, $completedAt): bool {
+            DiscogsAccount::query()
+                ->whereKey($syncRun->discogs_account_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $lockedSyncRun = DiscogsSyncRun::query()->lockForUpdate()->findOrFail($syncRun->id);
+
+            if ($lockedSyncRun->status === 'completed') {
+                return true;
+            }
+
+            if (! $lockedSyncRun->is_full_reconciliation || ! $this->pagesAreComplete($lockedSyncRun)) {
+                throw new LogicException('Only fully imported reconciliation runs can be finalized.');
+            }
+
+            if ($this->pendingReconciliationCandidates($lockedSyncRun)->exists()) {
+                return false;
+            }
+
+            $itemsRemoved = $this->confirmedRemovalCandidates($lockedSyncRun)->count();
+            CollectionItem::query()
+                ->whereIn(
+                    'id',
+                    $this->confirmedRemovalCandidates($lockedSyncRun)->select('collection_item_id'),
+                )
+                ->update(['is_active' => false]);
+            $this->confirmedRemovalCandidates($lockedSyncRun)->delete();
+
+            $lockedSyncRun->update([
+                'status' => 'completed',
+                'items_removed' => $lockedSyncRun->items_removed + $itemsRemoved,
+                'completed_at' => $completedAt,
+                'error_message' => null,
+            ]);
+
+            return true;
         }, attempts: 3);
     }
 
@@ -228,6 +393,41 @@ class DiscogsCollectionImporter
         }
 
         return $syncRun->last_completed_page + 1;
+    }
+
+    private function pagesAreComplete(DiscogsSyncRun $syncRun): bool
+    {
+        return $syncRun->total_pages !== null
+            && $syncRun->last_completed_page >= max(1, $syncRun->total_pages);
+    }
+
+    /** @return Builder<DiscogsCollectionInstance> */
+    private function reconciliationCandidates(DiscogsSyncRun $syncRun): Builder
+    {
+        return DiscogsCollectionInstance::query()
+            ->where('discogs_account_id', $syncRun->discogs_account_id)
+            ->where(function ($query) use ($syncRun): void {
+                $query->whereNull('last_seen_sync_run_id')
+                    ->orWhere('last_seen_sync_run_id', '!=', $syncRun->id);
+            });
+    }
+
+    /** @return Builder<DiscogsCollectionInstance> */
+    private function pendingReconciliationCandidates(DiscogsSyncRun $syncRun): Builder
+    {
+        return $this->reconciliationCandidates($syncRun)
+            ->where(function ($query) use ($syncRun): void {
+                $query->whereNull('missing_confirmed_sync_run_id')
+                    ->orWhere('missing_confirmed_sync_run_id', '!=', $syncRun->id);
+            })
+            ->with('collectionItem.release');
+    }
+
+    /** @return Builder<DiscogsCollectionInstance> */
+    private function confirmedRemovalCandidates(DiscogsSyncRun $syncRun): Builder
+    {
+        return $this->reconciliationCandidates($syncRun)
+            ->where('missing_confirmed_sync_run_id', $syncRun->id);
     }
 
     /**

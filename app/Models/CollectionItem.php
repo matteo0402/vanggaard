@@ -15,13 +15,18 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property int $id
  * @property int $user_id
  * @property int $release_id
+ * @property bool $is_active
  * @property-read Release $release
  */
-#[Fillable(['user_id', 'release_id'])]
+#[Fillable(['user_id', 'release_id', 'is_active'])]
 class CollectionItem extends Model
 {
     /** @use HasFactory<CollectionItemFactory> */
     use HasFactory;
+
+    protected $attributes = [
+        'is_active' => true,
+    ];
 
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
@@ -61,5 +66,13 @@ class CollectionItem extends Model
     public function storageAssignments(): HasMany
     {
         return $this->hasMany(CollectionItemStorageAssignment::class);
+    }
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'is_active' => 'boolean',
+        ];
     }
 }

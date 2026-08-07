@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['discogs_account_id', 'collection_item_id', 'user_id', 'last_seen_sync_run_id', 'discogs_instance_id', 'discogs_folder_id', 'source_url', 'fetched_at'])]
+#[Fillable(['discogs_account_id', 'collection_item_id', 'user_id', 'last_seen_sync_run_id', 'missing_confirmed_sync_run_id', 'discogs_instance_id', 'discogs_folder_id', 'source_url', 'fetched_at'])]
 class DiscogsCollectionInstance extends Model
 {
     /** @use HasFactory<DiscogsCollectionInstanceFactory> */
