@@ -1,7 +1,7 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Tests\Fixtures\Jobs\MarkRuntimeQueueAsProcessed;
 
-uses(LazilyRefreshDatabase::class);
+uses(DatabaseTransactions::class);
 
 beforeEach(function () {
     if (! filter_var($_SERVER['PRODUCTION_RUNTIME_TESTS'] ?? false, FILTER_VALIDATE_BOOL)) {
