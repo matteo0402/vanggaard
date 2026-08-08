@@ -1,8 +1,19 @@
 <script setup lang="ts">
-import { Form, Head, Link } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { Form, Head, Link, useForm } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
 import PersonalReleaseMetadataController from '@/actions/App/Http/Controllers/PersonalReleaseMetadataController';
 import ReleaseRefreshController from '@/actions/App/Http/Controllers/ReleaseRefreshController';
+import { update as updateReleaseVocabulary } from '@/actions/App/Http/Controllers/ReleaseVocabularyController';
+import {
+    destroy as destroyRiddim,
+    store as storeRiddim,
+    update as updateRiddim,
+} from '@/actions/App/Http/Controllers/RiddimController';
+import {
+    destroy as destroyTag,
+    store as storeTag,
+    update as updateTag,
+} from '@/actions/App/Http/Controllers/TagController';
 import DiscogsAttribution from '@/components/DiscogsAttribution.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { collection } from '@/routes';
@@ -22,6 +33,16 @@ type ReleaseVideo = {
     duration: number | null;
     external_url: string | null;
     embed_url: string | null;
+};
+
+type Vocabulary = {
+    id: number;
+    name: string;
+};
+
+type TrackRiddimOverride = {
+    sequence: number;
+    riddim_id: number;
 };
 
 const props = defineProps<{
@@ -49,9 +70,12 @@ const props = defineProps<{
                 descriptions: string[];
             }>;
             tracks: Array<{
+                sequence: number;
                 position: string | null;
                 title: string;
                 duration: string | null;
+                effective_riddim_id: number | null;
+                is_riddim_override: boolean;
             }>;
             videos: ReleaseVideo[];
         } | null;
@@ -62,6 +86,13 @@ const props = defineProps<{
             is_dj_ready: boolean;
             energy: number | null;
             bpm: number | null;
+            tags: number[];
+            release_riddim_id: number | null;
+            track_riddim_overrides: TrackRiddimOverride[];
+        };
+        vocabularies: {
+            tags: Vocabulary[];
+            riddims: Vocabulary[];
         };
         physical_copies: Array<{ id: number; locations: string[] }>;
         sync: {
@@ -75,6 +106,11 @@ const props = defineProps<{
 }>();
 
 const selectedVideoId = ref(props.release.discogs?.videos[0]?.id ?? null);
+const vocabularyForm = useForm({
+    tag_ids: [...props.release.personal.tags],
+    release_riddim_id: props.release.personal.release_riddim_id,
+    track_riddim_overrides: [...props.release.personal.track_riddim_overrides],
+});
 const selectedVideo = computed(
     () =>
         props.release.discogs?.videos.find(
@@ -83,6 +119,74 @@ const selectedVideo = computed(
         props.release.discogs?.videos[0] ??
         null,
 );
+const vocabularyError = computed(
+    () => Object.values(vocabularyForm.errors)[0] ?? null,
+);
+
+watch(
+    () => props.release.personal,
+    (personal) => {
+        vocabularyForm.tag_ids = [...personal.tags];
+        vocabularyForm.release_riddim_id = personal.release_riddim_id;
+        vocabularyForm.track_riddim_overrides = [
+            ...personal.track_riddim_overrides,
+        ];
+    },
+);
+
+function toggleTag(tagId: number): void {
+    vocabularyForm.tag_ids = vocabularyForm.tag_ids.includes(tagId)
+        ? vocabularyForm.tag_ids.filter((id) => id !== tagId)
+        : [...vocabularyForm.tag_ids, tagId];
+}
+
+function setReleaseRiddim(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+
+    vocabularyForm.release_riddim_id = value === '' ? null : Number(value);
+}
+
+function trackOverride(sequence: number): number | null {
+    return (
+        vocabularyForm.track_riddim_overrides.find(
+            (override) => override.sequence === sequence,
+        )?.riddim_id ?? null
+    );
+}
+
+function setTrackOverride(sequence: number, event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    const otherOverrides = vocabularyForm.track_riddim_overrides.filter(
+        (override) => override.sequence !== sequence,
+    );
+
+    vocabularyForm.track_riddim_overrides =
+        value === ''
+            ? otherOverrides
+            : [...otherOverrides, { sequence, riddim_id: Number(value) }].sort(
+                  (first, second) => first.sequence - second.sequence,
+              );
+}
+
+function riddimName(riddimId: number | null): string | null {
+    return (
+        props.release.vocabularies.riddims.find(
+            (riddim) => riddim.id === riddimId,
+        )?.name ?? null
+    );
+}
+
+function saveVocabularies(): void {
+    vocabularyForm.submit(updateReleaseVocabulary(props.release.id), {
+        preserveScroll: true,
+    });
+}
+
+function confirmVocabularyDelete(event: SubmitEvent, name: string): void {
+    if (!window.confirm(`Remove “${name}” from your vocabulary?`)) {
+        event.preventDefault();
+    }
+}
 
 function formatTimestamp(timestamp: string): string {
     return new Intl.DateTimeFormat(undefined, {
@@ -236,8 +340,8 @@ function formatDuration(duration: number | null): string | null {
                     >
                         <li
                             v-for="track in release.discogs.tracks"
-                            :key="`${track.position}-${track.title}`"
-                            class="grid grid-cols-[3rem_1fr_auto] gap-3 py-3 text-sm"
+                            :key="track.sequence"
+                            class="grid grid-cols-[3rem_1fr] items-center gap-x-3 gap-y-2 py-3 text-sm sm:grid-cols-[3rem_1fr_auto]"
                         >
                             <span class="font-mono text-stone-500">{{
                                 track.position ?? '—'
@@ -248,6 +352,47 @@ function formatDuration(duration: number | null): string | null {
                             <span class="font-mono text-stone-500">{{
                                 track.duration ?? ''
                             }}</span>
+                            <div class="col-start-2 sm:col-span-2">
+                                <label
+                                    :for="`track-riddim-${track.sequence}`"
+                                    class="sr-only"
+                                >
+                                    Riddim override for {{ track.title }}
+                                </label>
+                                <select
+                                    :id="`track-riddim-${track.sequence}`"
+                                    :value="trackOverride(track.sequence) ?? ''"
+                                    class="min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-3 text-xs text-stone-200 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                    @change="
+                                        setTrackOverride(track.sequence, $event)
+                                    "
+                                >
+                                    <option value="">
+                                        Inherit release riddim ({{
+                                            riddimName(
+                                                vocabularyForm.release_riddim_id,
+                                            ) ?? 'none set'
+                                        }})
+                                    </option>
+                                    <option
+                                        v-for="riddim in release.vocabularies
+                                            .riddims"
+                                        :key="riddim.id"
+                                        :value="riddim.id"
+                                    >
+                                        Override: {{ riddim.name }}
+                                    </option>
+                                </select>
+                                <p class="mt-1 text-xs text-stone-500">
+                                    Effective:
+                                    {{
+                                        riddimName(
+                                            trackOverride(track.sequence) ??
+                                                vocabularyForm.release_riddim_id,
+                                        ) ?? 'No riddim'
+                                    }}
+                                </p>
+                            </div>
                         </li>
                     </ol>
                     <p v-else class="mt-5 text-sm leading-6 text-stone-500">
@@ -436,6 +581,349 @@ function formatDuration(duration: number | null): string | null {
                             </p>
                         </li>
                     </ul>
+                </section>
+
+                <section
+                    aria-labelledby="release-vocabulary"
+                    class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
+                >
+                    <p
+                        class="text-xs font-semibold tracking-[0.18em] text-emerald-300 uppercase"
+                    >
+                        Yours, not Discogs
+                    </p>
+                    <h2
+                        id="release-vocabulary"
+                        class="mt-2 text-xl font-semibold text-stone-50"
+                    >
+                        Tags & riddims
+                    </h2>
+                    <p class="mt-2 text-sm leading-6 text-stone-400">
+                        Tags describe this release. Its riddim is inherited by
+                        every track unless you choose an override in the track
+                        list.
+                    </p>
+
+                    <form
+                        class="mt-6 flex flex-col gap-5"
+                        @submit.prevent="saveVocabularies"
+                    >
+                        <fieldset>
+                            <legend
+                                class="text-sm font-semibold text-stone-200"
+                            >
+                                Release tags
+                            </legend>
+                            <div
+                                v-if="release.vocabularies.tags.length"
+                                class="mt-3 flex flex-wrap gap-2"
+                            >
+                                <label
+                                    v-for="tag in release.vocabularies.tags"
+                                    :key="tag.id"
+                                    :class="[
+                                        'flex min-h-11 cursor-pointer items-center gap-2 rounded-full border px-4 py-2 text-sm transition',
+                                        vocabularyForm.tag_ids.includes(tag.id)
+                                            ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-100'
+                                            : 'border-white/10 bg-stone-950/40 text-stone-300 hover:border-white/20',
+                                    ]"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        :checked="
+                                            vocabularyForm.tag_ids.includes(
+                                                tag.id,
+                                            )
+                                        "
+                                        class="size-4 rounded border-white/20 bg-stone-900 text-emerald-400 focus:ring-emerald-300/30"
+                                        @change="toggleTag(tag.id)"
+                                    />
+                                    {{ tag.name }}
+                                </label>
+                            </div>
+                            <p v-else class="mt-2 text-xs text-stone-500">
+                                Create your first tag below.
+                            </p>
+                        </fieldset>
+
+                        <div>
+                            <label
+                                for="release-riddim"
+                                class="text-sm font-semibold text-stone-200"
+                            >
+                                Release riddim
+                            </label>
+                            <select
+                                id="release-riddim"
+                                :value="vocabularyForm.release_riddim_id ?? ''"
+                                class="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-4 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                @change="setReleaseRiddim"
+                            >
+                                <option value="">No release riddim</option>
+                                <option
+                                    v-for="riddim in release.vocabularies
+                                        .riddims"
+                                    :key="riddim.id"
+                                    :value="riddim.id"
+                                >
+                                    {{ riddim.name }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <p v-if="vocabularyError" class="text-xs text-red-300">
+                            {{ vocabularyError }}
+                        </p>
+
+                        <div class="flex items-center justify-between gap-4">
+                            <p
+                                aria-live="polite"
+                                class="text-sm font-semibold text-emerald-300"
+                            >
+                                <span v-if="vocabularyForm.recentlySuccessful">
+                                    Tags and riddims saved.
+                                </span>
+                            </p>
+                            <button
+                                type="submit"
+                                :disabled="vocabularyForm.processing"
+                                class="min-h-11 rounded-full bg-amber-300 px-5 text-sm font-semibold text-stone-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {{
+                                    vocabularyForm.processing
+                                        ? 'Saving…'
+                                        : 'Save organization'
+                                }}
+                            </button>
+                        </div>
+                    </form>
+
+                    <details class="mt-6 border-t border-white/8 pt-5">
+                        <summary
+                            class="cursor-pointer text-sm font-semibold text-amber-300 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-amber-400"
+                        >
+                            Manage vocabularies
+                        </summary>
+
+                        <div class="mt-5 flex flex-col gap-6">
+                            <div>
+                                <h3
+                                    class="text-sm font-semibold text-stone-200"
+                                >
+                                    Tags
+                                </h3>
+                                <Form
+                                    :action="storeTag()"
+                                    error-bag="createTag"
+                                    :options="{ preserveScroll: true }"
+                                    reset-on-success
+                                    #default="{ errors, processing }"
+                                    class="mt-3 flex gap-2"
+                                >
+                                    <div class="grow">
+                                        <label for="new-tag" class="sr-only">
+                                            New tag name
+                                        </label>
+                                        <input
+                                            id="new-tag"
+                                            name="name"
+                                            required
+                                            maxlength="255"
+                                            placeholder="New tag"
+                                            class="min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                        />
+                                        <p
+                                            v-if="errors.name"
+                                            class="mt-1 text-xs text-red-300"
+                                        >
+                                            {{ errors.name }}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        :disabled="processing"
+                                        class="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-stone-200 hover:border-white/20 disabled:opacity-50"
+                                    >
+                                        Add
+                                    </button>
+                                </Form>
+
+                                <div class="mt-3 flex flex-col gap-2">
+                                    <div
+                                        v-for="tag in release.vocabularies.tags"
+                                        :key="tag.id"
+                                        class="flex items-start gap-2"
+                                    >
+                                        <Form
+                                            :action="updateTag(tag.id)"
+                                            :error-bag="`tag-${tag.id}`"
+                                            :options="{ preserveScroll: true }"
+                                            #default="{ errors, processing }"
+                                            class="grow"
+                                        >
+                                            <div class="flex gap-2">
+                                                <label
+                                                    :for="`tag-${tag.id}`"
+                                                    class="sr-only"
+                                                >
+                                                    Rename {{ tag.name }}
+                                                </label>
+                                                <input
+                                                    :id="`tag-${tag.id}`"
+                                                    name="name"
+                                                    required
+                                                    maxlength="255"
+                                                    :value="tag.name"
+                                                    class="min-h-11 min-w-0 grow rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    :disabled="processing"
+                                                    class="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-stone-300 hover:border-white/20 disabled:opacity-50"
+                                                >
+                                                    Rename
+                                                </button>
+                                            </div>
+                                            <p
+                                                v-if="errors.name"
+                                                class="mt-1 text-xs text-red-300"
+                                            >
+                                                {{ errors.name }}
+                                            </p>
+                                        </Form>
+                                        <Form
+                                            :action="destroyTag(tag.id)"
+                                            :options="{ preserveScroll: true }"
+                                            #default="{ processing }"
+                                            @submit="
+                                                confirmVocabularyDelete(
+                                                    $event,
+                                                    tag.name,
+                                                )
+                                            "
+                                        >
+                                            <button
+                                                type="submit"
+                                                :disabled="processing"
+                                                class="min-h-11 rounded-xl px-3 text-xs font-semibold text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                                            >
+                                                Remove
+                                            </button>
+                                        </Form>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3
+                                    class="text-sm font-semibold text-stone-200"
+                                >
+                                    Riddims
+                                </h3>
+                                <Form
+                                    :action="storeRiddim()"
+                                    error-bag="createRiddim"
+                                    :options="{ preserveScroll: true }"
+                                    reset-on-success
+                                    #default="{ errors, processing }"
+                                    class="mt-3 flex gap-2"
+                                >
+                                    <div class="grow">
+                                        <label for="new-riddim" class="sr-only">
+                                            New riddim name
+                                        </label>
+                                        <input
+                                            id="new-riddim"
+                                            name="name"
+                                            required
+                                            maxlength="255"
+                                            placeholder="New riddim"
+                                            class="min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                        />
+                                        <p
+                                            v-if="errors.name"
+                                            class="mt-1 text-xs text-red-300"
+                                        >
+                                            {{ errors.name }}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        :disabled="processing"
+                                        class="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-stone-200 hover:border-white/20 disabled:opacity-50"
+                                    >
+                                        Add
+                                    </button>
+                                </Form>
+
+                                <div class="mt-3 flex flex-col gap-2">
+                                    <div
+                                        v-for="riddim in release.vocabularies
+                                            .riddims"
+                                        :key="riddim.id"
+                                        class="flex items-start gap-2"
+                                    >
+                                        <Form
+                                            :action="updateRiddim(riddim.id)"
+                                            :error-bag="`riddim-${riddim.id}`"
+                                            :options="{ preserveScroll: true }"
+                                            #default="{ errors, processing }"
+                                            class="grow"
+                                        >
+                                            <div class="flex gap-2">
+                                                <label
+                                                    :for="`riddim-${riddim.id}`"
+                                                    class="sr-only"
+                                                >
+                                                    Rename {{ riddim.name }}
+                                                </label>
+                                                <input
+                                                    :id="`riddim-${riddim.id}`"
+                                                    name="name"
+                                                    required
+                                                    maxlength="255"
+                                                    :value="riddim.name"
+                                                    class="min-h-11 min-w-0 grow rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                                />
+                                                <button
+                                                    type="submit"
+                                                    :disabled="processing"
+                                                    class="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-stone-300 hover:border-white/20 disabled:opacity-50"
+                                                >
+                                                    Rename
+                                                </button>
+                                            </div>
+                                            <p
+                                                v-if="errors.name"
+                                                class="mt-1 text-xs text-red-300"
+                                            >
+                                                {{ errors.name }}
+                                            </p>
+                                        </Form>
+                                        <Form
+                                            :action="destroyRiddim(riddim.id)"
+                                            :options="{ preserveScroll: true }"
+                                            #default="{ processing }"
+                                            @submit="
+                                                confirmVocabularyDelete(
+                                                    $event,
+                                                    riddim.name,
+                                                )
+                                            "
+                                        >
+                                            <button
+                                                type="submit"
+                                                :disabled="processing"
+                                                class="min-h-11 rounded-xl px-3 text-xs font-semibold text-red-300 hover:bg-red-400/10 disabled:opacity-50"
+                                            >
+                                                Remove
+                                            </button>
+                                        </Form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
                 </section>
 
                 <section
