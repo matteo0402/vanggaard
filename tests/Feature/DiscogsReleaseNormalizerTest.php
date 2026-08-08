@@ -92,6 +92,11 @@ test('a changed response retires removed source data without updating user-owned
         'personal_notes' => 'My original pressing.',
         'rating' => 5,
         'corrected_year' => 1975,
+        'is_year_approximate' => true,
+        'is_favourite' => true,
+        'is_dj_ready' => true,
+        'energy' => 4,
+        'bpm' => 78.5,
     ]);
 
     $payload['title'] = 'King Tubby Meets Rockers Uptown (Reissue)';
@@ -121,7 +126,12 @@ test('a changed response retires removed source data without updating user-owned
     expect($collectionItem->fresh()->release_id)->toBe($release->id)
         ->and($personalMetadata->fresh()->personal_notes)->toBe('My original pressing.')
         ->and($personalMetadata->fresh()->rating)->toBe(5)
-        ->and($personalMetadata->fresh()->corrected_year)->toBe(1975);
+        ->and($personalMetadata->fresh()->corrected_year)->toBe(1975)
+        ->and($personalMetadata->fresh()->is_year_approximate)->toBeTrue()
+        ->and($personalMetadata->fresh()->is_favourite)->toBeTrue()
+        ->and($personalMetadata->fresh()->is_dj_ready)->toBeTrue()
+        ->and($personalMetadata->fresh()->energy)->toBe(4)
+        ->and($personalMetadata->fresh()->bpm)->toBe(78.5);
 });
 
 test('a partially missing response stores the release with empty optional relationships', function () {

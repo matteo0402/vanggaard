@@ -25,6 +25,11 @@ class PersonalReleaseMetadataFactory extends Factory
             'personal_notes' => fake()->optional()->paragraph(),
             'rating' => fake()->optional()->numberBetween(1, 5),
             'corrected_year' => null,
+            'is_year_approximate' => false,
+            'is_favourite' => false,
+            'is_dj_ready' => false,
+            'energy' => null,
+            'bpm' => null,
         ];
     }
 }
