@@ -4,15 +4,17 @@ namespace App;
 
 use App\Models\CollectionItem;
 use App\Models\Release;
+use App\Models\ReleaseRiddim;
+use App\Models\ReleaseTag;
 use App\Models\Riddim;
 use App\Models\StorageLocation;
 use App\Models\Tag;
+use App\Models\TrackRiddimOverride;
 use App\Models\User;
 use App\Models\Video;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 class CollectionCatalog
 {
@@ -99,20 +101,20 @@ class CollectionCatalog
             ->orderBy('normalized_name')
             ->orderBy('name')
             ->get(['id', 'name']);
-        $assignedTagIds = DB::table('release_tag')
-            ->where('user_id', $user->id)
-            ->where('release_id', $release->id)
+        $assignedTagIds = ReleaseTag::query()
+            ->whereBelongsTo($user)
+            ->whereBelongsTo($release)
             ->pluck('tag_id')
             ->map(fn (mixed $tagId): int => (int) $tagId)
             ->all();
-        $releaseRiddimId = DB::table('release_riddim')
-            ->where('user_id', $user->id)
-            ->where('release_id', $release->id)
+        $releaseRiddimId = ReleaseRiddim::query()
+            ->whereBelongsTo($user)
+            ->whereBelongsTo($release)
             ->value('riddim_id');
         $releaseRiddimId = $releaseRiddimId === null ? null : (int) $releaseRiddimId;
-        $trackOverrides = DB::table('track_riddim_override')
-            ->where('user_id', $user->id)
-            ->where('release_id', $release->id)
+        $trackOverrides = TrackRiddimOverride::query()
+            ->whereBelongsTo($user)
+            ->whereBelongsTo($release)
             ->orderBy('track_sequence')
             ->pluck('riddim_id', 'track_sequence')
             ->map(fn (mixed $riddimId): int => (int) $riddimId);

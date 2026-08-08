@@ -2,37 +2,36 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\PersonalMetadataChanged;
 use App\Http\Requests\StoreRiddimRequest;
 use App\Http\Requests\UpdateRiddimRequest;
 use App\Models\Riddim;
 use App\Models\User;
+use App\VocabularyManager;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 class RiddimController extends Controller
 {
+    public function __construct(private VocabularyManager $vocabulary) {}
+
     public function store(StoreRiddimRequest $request): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
+        /** @var array{name: string} $validated */
+        $validated = $request->validated();
 
-        $user->riddims()->create($request->validated());
+        $this->vocabulary->create($user, new Riddim, $validated['name']);
 
         return back();
     }
 
     public function update(UpdateRiddimRequest $request, Riddim $riddim): RedirectResponse
     {
-        DB::transaction(function () use ($request, $riddim): void {
-            $releaseIds = $this->affectedReleaseIds($riddim);
+        /** @var array{name: string} $validated */
+        $validated = $request->validated();
 
-            $riddim->update($request->validated());
-
-            $this->dispatchChanges($riddim->user_id, $releaseIds);
-        });
+        $this->vocabulary->rename($riddim, $validated['name']);
 
         return back();
     }
@@ -41,39 +40,8 @@ class RiddimController extends Controller
     {
         Gate::authorize('delete', $riddim);
 
-        DB::transaction(function () use ($riddim): void {
-            $releaseIds = $this->affectedReleaseIds($riddim);
-            $userId = $riddim->user_id;
-
-            $riddim->delete();
-
-            $this->dispatchChanges($userId, $releaseIds);
-        });
+        $this->vocabulary->delete($riddim);
 
         return back();
-    }
-
-    /** @return Collection<int, int> */
-    private function affectedReleaseIds(Riddim $riddim): Collection
-    {
-        return DB::table('release_riddim')
-            ->where('user_id', $riddim->user_id)
-            ->where('riddim_id', $riddim->id)
-            ->pluck('release_id')
-            ->merge(DB::table('track_riddim_override')
-                ->where('user_id', $riddim->user_id)
-                ->where('riddim_id', $riddim->id)
-                ->pluck('release_id'))
-            ->unique()
-            ->values();
-    }
-
-    /** @param Collection<int, int> $releaseIds */
-    private function dispatchChanges(int $userId, Collection $releaseIds): void
-    {
-        $releaseIds->each(fn (int $releaseId) => PersonalMetadataChanged::dispatch(
-            $userId,
-            $releaseId,
-        ));
     }
 }

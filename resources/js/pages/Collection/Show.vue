@@ -15,6 +15,7 @@ import {
     update as updateTag,
 } from '@/actions/App/Http/Controllers/TagController';
 import DiscogsAttribution from '@/components/DiscogsAttribution.vue';
+import VocabularyManager from '@/components/VocabularyManager.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { collection } from '@/routes';
 
@@ -180,12 +181,6 @@ function saveVocabularies(): void {
     vocabularyForm.submit(updateReleaseVocabulary(props.release.id), {
         preserveScroll: true,
     });
-}
-
-function confirmVocabularyDelete(event: SubmitEvent, name: string): void {
-    if (!window.confirm(`Remove “${name}” from your vocabulary?`)) {
-        event.preventDefault();
-    }
 }
 
 function formatTimestamp(timestamp: string): string {
@@ -706,222 +701,22 @@ function formatDuration(duration: number | null): string | null {
                         </summary>
 
                         <div class="mt-5 flex flex-col gap-6">
-                            <div>
-                                <h3
-                                    class="text-sm font-semibold text-stone-200"
-                                >
-                                    Tags
-                                </h3>
-                                <Form
-                                    :action="storeTag()"
-                                    error-bag="createTag"
-                                    :options="{ preserveScroll: true }"
-                                    reset-on-success
-                                    #default="{ errors, processing }"
-                                    class="mt-3 flex gap-2"
-                                >
-                                    <div class="grow">
-                                        <label for="new-tag" class="sr-only">
-                                            New tag name
-                                        </label>
-                                        <input
-                                            id="new-tag"
-                                            name="name"
-                                            required
-                                            maxlength="255"
-                                            placeholder="New tag"
-                                            class="min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
-                                        />
-                                        <p
-                                            v-if="errors.name"
-                                            class="mt-1 text-xs text-red-300"
-                                        >
-                                            {{ errors.name }}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        :disabled="processing"
-                                        class="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-stone-200 hover:border-white/20 disabled:opacity-50"
-                                    >
-                                        Add
-                                    </button>
-                                </Form>
-
-                                <div class="mt-3 flex flex-col gap-2">
-                                    <div
-                                        v-for="tag in release.vocabularies.tags"
-                                        :key="tag.id"
-                                        class="flex items-start gap-2"
-                                    >
-                                        <Form
-                                            :action="updateTag(tag.id)"
-                                            :error-bag="`tag-${tag.id}`"
-                                            :options="{ preserveScroll: true }"
-                                            #default="{ errors, processing }"
-                                            class="grow"
-                                        >
-                                            <div class="flex gap-2">
-                                                <label
-                                                    :for="`tag-${tag.id}`"
-                                                    class="sr-only"
-                                                >
-                                                    Rename {{ tag.name }}
-                                                </label>
-                                                <input
-                                                    :id="`tag-${tag.id}`"
-                                                    name="name"
-                                                    required
-                                                    maxlength="255"
-                                                    :value="tag.name"
-                                                    class="min-h-11 min-w-0 grow rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
-                                                />
-                                                <button
-                                                    type="submit"
-                                                    :disabled="processing"
-                                                    class="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-stone-300 hover:border-white/20 disabled:opacity-50"
-                                                >
-                                                    Rename
-                                                </button>
-                                            </div>
-                                            <p
-                                                v-if="errors.name"
-                                                class="mt-1 text-xs text-red-300"
-                                            >
-                                                {{ errors.name }}
-                                            </p>
-                                        </Form>
-                                        <Form
-                                            :action="destroyTag(tag.id)"
-                                            :options="{ preserveScroll: true }"
-                                            #default="{ processing }"
-                                            @submit="
-                                                confirmVocabularyDelete(
-                                                    $event,
-                                                    tag.name,
-                                                )
-                                            "
-                                        >
-                                            <button
-                                                type="submit"
-                                                :disabled="processing"
-                                                class="min-h-11 rounded-xl px-3 text-xs font-semibold text-red-300 hover:bg-red-400/10 disabled:opacity-50"
-                                            >
-                                                Remove
-                                            </button>
-                                        </Form>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div>
-                                <h3
-                                    class="text-sm font-semibold text-stone-200"
-                                >
-                                    Riddims
-                                </h3>
-                                <Form
-                                    :action="storeRiddim()"
-                                    error-bag="createRiddim"
-                                    :options="{ preserveScroll: true }"
-                                    reset-on-success
-                                    #default="{ errors, processing }"
-                                    class="mt-3 flex gap-2"
-                                >
-                                    <div class="grow">
-                                        <label for="new-riddim" class="sr-only">
-                                            New riddim name
-                                        </label>
-                                        <input
-                                            id="new-riddim"
-                                            name="name"
-                                            required
-                                            maxlength="255"
-                                            placeholder="New riddim"
-                                            class="min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
-                                        />
-                                        <p
-                                            v-if="errors.name"
-                                            class="mt-1 text-xs text-red-300"
-                                        >
-                                            {{ errors.name }}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="submit"
-                                        :disabled="processing"
-                                        class="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-stone-200 hover:border-white/20 disabled:opacity-50"
-                                    >
-                                        Add
-                                    </button>
-                                </Form>
-
-                                <div class="mt-3 flex flex-col gap-2">
-                                    <div
-                                        v-for="riddim in release.vocabularies
-                                            .riddims"
-                                        :key="riddim.id"
-                                        class="flex items-start gap-2"
-                                    >
-                                        <Form
-                                            :action="updateRiddim(riddim.id)"
-                                            :error-bag="`riddim-${riddim.id}`"
-                                            :options="{ preserveScroll: true }"
-                                            #default="{ errors, processing }"
-                                            class="grow"
-                                        >
-                                            <div class="flex gap-2">
-                                                <label
-                                                    :for="`riddim-${riddim.id}`"
-                                                    class="sr-only"
-                                                >
-                                                    Rename {{ riddim.name }}
-                                                </label>
-                                                <input
-                                                    :id="`riddim-${riddim.id}`"
-                                                    name="name"
-                                                    required
-                                                    maxlength="255"
-                                                    :value="riddim.name"
-                                                    class="min-h-11 min-w-0 grow rounded-xl border border-white/10 bg-stone-950/60 px-3 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
-                                                />
-                                                <button
-                                                    type="submit"
-                                                    :disabled="processing"
-                                                    class="min-h-11 rounded-xl border border-white/10 px-3 text-xs font-semibold text-stone-300 hover:border-white/20 disabled:opacity-50"
-                                                >
-                                                    Rename
-                                                </button>
-                                            </div>
-                                            <p
-                                                v-if="errors.name"
-                                                class="mt-1 text-xs text-red-300"
-                                            >
-                                                {{ errors.name }}
-                                            </p>
-                                        </Form>
-                                        <Form
-                                            :action="destroyRiddim(riddim.id)"
-                                            :options="{ preserveScroll: true }"
-                                            #default="{ processing }"
-                                            @submit="
-                                                confirmVocabularyDelete(
-                                                    $event,
-                                                    riddim.name,
-                                                )
-                                            "
-                                        >
-                                            <button
-                                                type="submit"
-                                                :disabled="processing"
-                                                class="min-h-11 rounded-xl px-3 text-xs font-semibold text-red-300 hover:bg-red-400/10 disabled:opacity-50"
-                                            >
-                                                Remove
-                                            </button>
-                                        </Form>
-                                    </div>
-                                </div>
-                            </div>
+                            <VocabularyManager
+                                label="Tags"
+                                singular="tag"
+                                :items="release.vocabularies.tags"
+                                :store-action="storeTag()"
+                                :update-action="updateTag"
+                                :destroy-action="destroyTag"
+                            />
+                            <VocabularyManager
+                                label="Riddims"
+                                singular="riddim"
+                                :items="release.vocabularies.riddims"
+                                :store-action="storeRiddim()"
+                                :update-action="updateRiddim"
+                                :destroy-action="destroyRiddim"
+                            />
                         </div>
                     </details>
                 </section>

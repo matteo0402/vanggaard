@@ -4,13 +4,15 @@ use App\CollectionCatalog;
 use App\Events\PersonalMetadataChanged;
 use App\Models\CollectionItem;
 use App\Models\Release;
+use App\Models\ReleaseRiddim;
+use App\Models\ReleaseTag;
 use App\Models\Riddim;
 use App\Models\Tag;
 use App\Models\Track;
+use App\Models\TrackRiddimOverride;
 use App\Models\User;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
 uses(LazilyRefreshDatabase::class);
@@ -83,29 +85,22 @@ test('renaming and deleting assigned vocabularies dispatches one change per affe
     $secondRelease = Release::factory()->create();
     $tag = Tag::factory()->for($owner)->create();
     $riddim = Riddim::factory()->for($owner)->create();
-    $now = now();
 
-    DB::table('release_tag')->insert([
+    ReleaseTag::query()->create([
         'user_id' => $owner->id,
         'release_id' => $firstRelease->id,
         'tag_id' => $tag->id,
-        'created_at' => $now,
-        'updated_at' => $now,
     ]);
-    DB::table('release_riddim')->insert([
+    ReleaseRiddim::query()->create([
         'user_id' => $owner->id,
         'release_id' => $firstRelease->id,
         'riddim_id' => $riddim->id,
-        'created_at' => $now,
-        'updated_at' => $now,
     ]);
-    DB::table('track_riddim_override')->insert([
+    TrackRiddimOverride::query()->create([
         'user_id' => $owner->id,
         'release_id' => $secondRelease->id,
         'track_sequence' => 3,
         'riddim_id' => $riddim->id,
-        'created_at' => $now,
-        'updated_at' => $now,
     ]);
 
     Event::fake([PersonalMetadataChanged::class]);
