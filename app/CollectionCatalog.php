@@ -105,12 +105,17 @@ class CollectionCatalog
                     'effective' => $correctedYear ?? ($isFresh ? $release->released_year : null),
                     'discogs' => $isFresh ? $release->released_year : null,
                     'is_corrected' => $correctedYear !== null,
+                    'is_approximate' => $correctedYear !== null && $metadata->is_year_approximate,
                 ],
             ],
             'discogs' => $isFresh ? $this->discogsDetails($release) : null,
             'personal' => [
                 'notes' => $metadata?->personal_notes,
                 'rating' => $metadata?->rating,
+                'is_favourite' => $metadata === null ? false : $metadata->is_favourite,
+                'is_dj_ready' => $metadata === null ? false : $metadata->is_dj_ready,
+                'energy' => $metadata?->energy,
+                'bpm' => $metadata?->bpm,
             ],
             'physical_copies' => $release->collectionItems
                 ->map(fn (CollectionItem $item): array => [

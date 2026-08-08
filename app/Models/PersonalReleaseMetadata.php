@@ -10,14 +10,36 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property int|null $corrected_year
+ * @property bool $is_year_approximate
  * @property int|null $rating
  * @property string|null $personal_notes
+ * @property bool $is_favourite
+ * @property bool $is_dj_ready
+ * @property int|null $energy
+ * @property float|null $bpm
  */
-#[Fillable(['user_id', 'release_id', 'personal_notes', 'rating', 'corrected_year'])]
+#[Fillable([
+    'user_id',
+    'release_id',
+    'personal_notes',
+    'rating',
+    'corrected_year',
+    'is_year_approximate',
+    'is_favourite',
+    'is_dj_ready',
+    'energy',
+    'bpm',
+])]
 class PersonalReleaseMetadata extends Model
 {
     /** @use HasFactory<PersonalReleaseMetadataFactory> */
     use HasFactory;
+
+    protected $attributes = [
+        'is_year_approximate' => false,
+        'is_favourite' => false,
+        'is_dj_ready' => false,
+    ];
 
     /** @return BelongsTo<User, $this> */
     public function user(): BelongsTo
@@ -42,5 +64,16 @@ class PersonalReleaseMetadata extends Model
         }
 
         return $this->release->released_year;
+    }
+
+    /** @return array<string, string> */
+    protected function casts(): array
+    {
+        return [
+            'is_year_approximate' => 'boolean',
+            'is_favourite' => 'boolean',
+            'is_dj_ready' => 'boolean',
+            'bpm' => 'float',
+        ];
     }
 }

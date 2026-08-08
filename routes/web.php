@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthenticatedSessionController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\PersonalReleaseMetadataController;
 use App\Http\Controllers\ReleaseRefreshController;
 use Illuminate\Support\Facades\Route;
 
@@ -37,5 +38,7 @@ Route::middleware('auth')->group(function () {
     ])->name('statistics');
     Route::post('/releases/{release}/refresh', ReleaseRefreshController::class)
         ->name('releases.refresh');
+    Route::patch('/releases/{release}/personal-metadata', PersonalReleaseMetadataController::class)
+        ->name('releases.personal_metadata.update');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });

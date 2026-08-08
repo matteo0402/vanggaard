@@ -90,8 +90,13 @@ test('release details show effective and Discogs values, ordered tracks, and cur
     CollectionItem::factory()->for($owner)->for($release)->create();
     PersonalReleaseMetadata::factory()->for($owner)->for($release)->create([
         'corrected_year' => 1975,
+        'is_year_approximate' => true,
         'personal_notes' => 'Warm-up copy',
         'rating' => 5,
+        'is_favourite' => true,
+        'is_dj_ready' => true,
+        'energy' => 4,
+        'bpm' => 78.5,
     ]);
     Track::factory()->for($release)->create(['sequence' => 2, 'position' => 'A2', 'title' => 'Second']);
     Track::factory()->for($release)->create(['sequence' => 1, 'position' => 'A1', 'title' => 'First']);
@@ -128,8 +133,13 @@ test('release details show effective and Discogs values, ordered tracks, and cur
             ->where('release.values.year.effective', 1975)
             ->where('release.values.year.discogs', 1976)
             ->where('release.values.year.is_corrected', true)
+            ->where('release.values.year.is_approximate', true)
             ->where('release.personal.notes', 'Warm-up copy')
             ->where('release.personal.rating', 5)
+            ->where('release.personal.is_favourite', true)
+            ->where('release.personal.is_dj_ready', true)
+            ->where('release.personal.energy', 4)
+            ->where('release.personal.bpm', 78.5)
             ->where('release.discogs.source_url', 'https://www.discogs.com/release/123')
             ->has('release.physical_copies', 2)
             ->where('release.physical_copies.0.locations', ['Studio / Reggae shelf / Box A'])
@@ -275,6 +285,8 @@ test('fresh release details support missing optional metadata', function () {
             ->where('release.discogs.tracks', [])
             ->where('release.discogs.videos', [])
             ->where('release.personal.notes', null)
+            ->where('release.personal.is_favourite', false)
+            ->where('release.personal.is_dj_ready', false)
             ->where('release.physical_copies.0.locations', []));
 });
 

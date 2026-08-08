@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Form, Head, Link } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
+import PersonalReleaseMetadataController from '@/actions/App/Http/Controllers/PersonalReleaseMetadataController';
 import ReleaseRefreshController from '@/actions/App/Http/Controllers/ReleaseRefreshController';
 import DiscogsAttribution from '@/components/DiscogsAttribution.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -27,7 +28,10 @@ const props = defineProps<{
     release: {
         id: number;
         is_fresh: boolean;
-        values: { title: Value<string>; year: Value<number> };
+        values: {
+            title: Value<string>;
+            year: Value<number> & { is_approximate: boolean };
+        };
         discogs: {
             discogs_id: number;
             title: string;
@@ -51,7 +55,14 @@ const props = defineProps<{
             }>;
             videos: ReleaseVideo[];
         } | null;
-        personal: { notes: string | null; rating: number | null };
+        personal: {
+            notes: string | null;
+            rating: number | null;
+            is_favourite: boolean;
+            is_dj_ready: boolean;
+            energy: number | null;
+            bpm: number | null;
+        };
         physical_copies: Array<{ id: number; locations: string[] }>;
         sync: {
             status: 'idle' | 'queued' | 'refreshing' | 'failed';
@@ -143,8 +154,9 @@ function formatDuration(duration: number | null): string | null {
                             <span
                                 class="rounded-full border border-white/10 px-3 py-1.5"
                                 >{{
-                                    release.values.year.effective ??
-                                    'Year unknown'
+                                    release.values.year.effective
+                                        ? `${release.values.year.is_approximate ? 'c. ' : ''}${release.values.year.effective}`
+                                        : 'Year unknown'
                                 }}</span
                             >
                             <span
@@ -166,8 +178,10 @@ function formatDuration(duration: number | null): string | null {
                             v-if="release.values.year.is_corrected"
                             class="mt-6 rounded-xl border border-emerald-400/20 bg-emerald-400/8 px-4 py-3 text-sm text-emerald-200"
                         >
-                            Effective year {{ release.values.year.effective }}.
-                            Original Discogs year
+                            Effective year
+                            {{ release.values.year.is_approximate ? 'c. ' : ''
+                            }}{{ release.values.year.effective }}. Original
+                            Discogs year
                             {{ release.values.year.discogs ?? 'not supplied' }}.
                         </div>
                         <p class="mt-auto pt-8 text-sm text-stone-400">
@@ -425,33 +439,253 @@ function formatDuration(duration: number | null): string | null {
                 </section>
 
                 <section
-                    aria-labelledby="collector-notes"
+                    aria-labelledby="personal-metadata"
                     class="rounded-2xl border border-white/10 bg-stone-900/70 p-6"
                 >
                     <p
                         class="text-xs font-semibold tracking-[0.18em] text-emerald-300 uppercase"
                     >
-                        Personal metadata
+                        Yours, not Discogs
                     </p>
                     <h2
-                        id="collector-notes"
+                        id="personal-metadata"
                         class="mt-2 text-xl font-semibold text-stone-50"
                     >
-                        Collector context
+                        Personal metadata
                     </h2>
-                    <p
-                        class="mt-4 text-sm leading-6 whitespace-pre-line text-stone-300"
+                    <p class="mt-2 text-sm leading-6 text-stone-400">
+                        Add the details you use while selecting records. Discogs
+                        refreshes never replace these values.
+                    </p>
+
+                    <Form
+                        :action="PersonalReleaseMetadataController(release.id)"
+                        :transform="
+                            (data) => ({
+                                ...data,
+                                is_year_approximate:
+                                    data.is_year_approximate === '1',
+                                is_favourite: data.is_favourite === '1',
+                                is_dj_ready: data.is_dj_ready === '1',
+                            })
+                        "
+                        :options="{ preserveScroll: true }"
+                        disable-while-processing
+                        #default="{ errors, processing, recentlySuccessful }"
+                        class="mt-6 flex flex-col gap-5 inert:opacity-60"
                     >
-                        {{ release.personal.notes || 'No personal notes yet.' }}
-                    </p>
-                    <p class="mt-4 text-xs text-stone-500">
-                        Rating:
-                        {{
-                            release.personal.rating
-                                ? `${release.personal.rating}/5`
-                                : 'Not rated'
-                        }}
-                    </p>
+                        <div>
+                            <label
+                                for="personal-notes"
+                                class="text-sm font-semibold text-stone-200"
+                            >
+                                Notes
+                            </label>
+                            <textarea
+                                id="personal-notes"
+                                name="personal_notes"
+                                :value="release.personal.notes ?? ''"
+                                rows="4"
+                                maxlength="5000"
+                                placeholder="Condition, mix notes, memories, or anything useful…"
+                                class="mt-2 w-full rounded-xl border border-white/10 bg-stone-950/60 px-4 py-3 text-sm leading-6 text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                            />
+                            <p
+                                v-if="errors.personal_notes"
+                                class="mt-2 text-xs text-red-300"
+                            >
+                                {{ errors.personal_notes }}
+                            </p>
+                        </div>
+
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    for="corrected-year"
+                                    class="text-sm font-semibold text-stone-200"
+                                >
+                                    Corrected year
+                                </label>
+                                <input
+                                    id="corrected-year"
+                                    name="corrected_year"
+                                    type="number"
+                                    min="1000"
+                                    :max="new Date().getFullYear() + 1"
+                                    :value="
+                                        release.values.year.is_corrected
+                                            ? release.values.year.effective
+                                            : ''
+                                    "
+                                    placeholder="e.g. 1975"
+                                    class="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-4 text-sm text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                />
+                                <p class="mt-2 text-xs text-stone-500">
+                                    Discogs year:
+                                    {{
+                                        release.values.year.discogs ??
+                                        'not supplied'
+                                    }}
+                                </p>
+                                <p
+                                    v-if="errors.corrected_year"
+                                    class="mt-2 text-xs text-red-300"
+                                >
+                                    {{ errors.corrected_year }}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label
+                                    for="personal-rating"
+                                    class="text-sm font-semibold text-stone-200"
+                                >
+                                    Personal rating
+                                </label>
+                                <select
+                                    id="personal-rating"
+                                    name="rating"
+                                    :value="release.personal.rating ?? ''"
+                                    class="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-4 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                >
+                                    <option value="">Not rated</option>
+                                    <option
+                                        v-for="rating in 5"
+                                        :key="rating"
+                                        :value="rating"
+                                    >
+                                        {{ rating }}/5
+                                    </option>
+                                </select>
+                                <p class="mt-2 text-xs text-stone-500">
+                                    Your rating, separate from Discogs community
+                                    ratings.
+                                </p>
+                                <p
+                                    v-if="errors.rating"
+                                    class="mt-2 text-xs text-red-300"
+                                >
+                                    {{ errors.rating }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <label
+                            class="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-stone-950/40 px-4 py-3 text-sm text-stone-300"
+                        >
+                            <input
+                                type="checkbox"
+                                name="is_year_approximate"
+                                value="1"
+                                :checked="release.values.year.is_approximate"
+                                class="size-4 rounded border-white/20 bg-stone-900 text-amber-400 focus:ring-amber-300/30"
+                            />
+                            Corrected year is approximate
+                        </label>
+
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <label
+                                class="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-stone-950/40 px-4 py-3 text-sm font-semibold text-stone-200"
+                            >
+                                <input
+                                    type="checkbox"
+                                    name="is_favourite"
+                                    value="1"
+                                    :checked="release.personal.is_favourite"
+                                    class="size-4 rounded border-white/20 bg-stone-900 text-amber-400 focus:ring-amber-300/30"
+                                />
+                                Favourite
+                            </label>
+                            <label
+                                class="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 bg-stone-950/40 px-4 py-3 text-sm font-semibold text-stone-200"
+                            >
+                                <input
+                                    type="checkbox"
+                                    name="is_dj_ready"
+                                    value="1"
+                                    :checked="release.personal.is_dj_ready"
+                                    class="size-4 rounded border-white/20 bg-stone-900 text-amber-400 focus:ring-amber-300/30"
+                                />
+                                DJ-ready
+                            </label>
+                        </div>
+
+                        <div class="grid gap-4 sm:grid-cols-2">
+                            <div>
+                                <label
+                                    for="energy"
+                                    class="text-sm font-semibold text-stone-200"
+                                >
+                                    Energy
+                                </label>
+                                <select
+                                    id="energy"
+                                    name="energy"
+                                    :value="release.personal.energy ?? ''"
+                                    class="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-4 text-sm text-stone-100 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                >
+                                    <option value="">Not set</option>
+                                    <option
+                                        v-for="energy in 5"
+                                        :key="energy"
+                                        :value="energy"
+                                    >
+                                        {{ energy }}/5
+                                    </option>
+                                </select>
+                                <p
+                                    v-if="errors.energy"
+                                    class="mt-2 text-xs text-red-300"
+                                >
+                                    {{ errors.energy }}
+                                </p>
+                            </div>
+                            <div>
+                                <label
+                                    for="bpm"
+                                    class="text-sm font-semibold text-stone-200"
+                                >
+                                    BPM
+                                </label>
+                                <input
+                                    id="bpm"
+                                    name="bpm"
+                                    type="number"
+                                    min="1"
+                                    max="999.99"
+                                    step="0.01"
+                                    inputmode="decimal"
+                                    :value="release.personal.bpm ?? ''"
+                                    placeholder="e.g. 78.5"
+                                    class="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-stone-950/60 px-4 text-sm text-stone-100 placeholder:text-stone-600 focus:border-amber-300/60 focus:ring-2 focus:ring-amber-300/20 focus:outline-none"
+                                />
+                                <p
+                                    v-if="errors.bpm"
+                                    class="mt-2 text-xs text-red-300"
+                                >
+                                    {{ errors.bpm }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between gap-4">
+                            <p
+                                aria-live="polite"
+                                class="text-sm font-semibold text-emerald-300"
+                            >
+                                <span v-if="recentlySuccessful">
+                                    Personal metadata saved.
+                                </span>
+                            </p>
+                            <button
+                                type="submit"
+                                :disabled="processing"
+                                class="min-h-11 rounded-full bg-amber-300 px-5 text-sm font-semibold text-stone-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                {{ processing ? 'Saving…' : 'Save metadata' }}
+                            </button>
+                        </div>
+                    </Form>
                 </section>
 
                 <section
