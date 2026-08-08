@@ -4,12 +4,15 @@ namespace App;
 
 use App\Models\CollectionItem;
 use App\Models\Release;
+use App\Models\Riddim;
 use App\Models\StorageLocation;
+use App\Models\Tag;
 use App\Models\User;
 use App\Models\Video;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class CollectionCatalog
 {
@@ -86,6 +89,33 @@ class CollectionCatalog
             ->whereBelongsTo($user)
             ->get(['id', 'parent_id', 'name'])
             ->keyBy('id');
+        $tags = Tag::query()
+            ->whereBelongsTo($user)
+            ->orderBy('normalized_name')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $riddims = Riddim::query()
+            ->whereBelongsTo($user)
+            ->orderBy('normalized_name')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $assignedTagIds = DB::table('release_tag')
+            ->where('user_id', $user->id)
+            ->where('release_id', $release->id)
+            ->pluck('tag_id')
+            ->map(fn (mixed $tagId): int => (int) $tagId)
+            ->all();
+        $releaseRiddimId = DB::table('release_riddim')
+            ->where('user_id', $user->id)
+            ->where('release_id', $release->id)
+            ->value('riddim_id');
+        $releaseRiddimId = $releaseRiddimId === null ? null : (int) $releaseRiddimId;
+        $trackOverrides = DB::table('track_riddim_override')
+            ->where('user_id', $user->id)
+            ->where('release_id', $release->id)
+            ->orderBy('track_sequence')
+            ->pluck('riddim_id', 'track_sequence')
+            ->map(fn (mixed $riddimId): int => (int) $riddimId);
         $metadata = $release->personalMetadata->isEmpty()
             ? null
             : $release->personalMetadata->firstOrFail();
@@ -108,7 +138,9 @@ class CollectionCatalog
                     'is_approximate' => $correctedYear !== null && $metadata->is_year_approximate,
                 ],
             ],
-            'discogs' => $isFresh ? $this->discogsDetails($release) : null,
+            'discogs' => $isFresh
+                ? $this->discogsDetails($release, $releaseRiddimId, $trackOverrides)
+                : null,
             'personal' => [
                 'notes' => $metadata?->personal_notes,
                 'rating' => $metadata?->rating,
@@ -116,6 +148,25 @@ class CollectionCatalog
                 'is_dj_ready' => $metadata === null ? false : $metadata->is_dj_ready,
                 'energy' => $metadata?->energy,
                 'bpm' => $metadata?->bpm,
+                'tags' => $assignedTagIds,
+                'release_riddim_id' => $releaseRiddimId,
+                'track_riddim_overrides' => $trackOverrides
+                    ->map(fn (int $riddimId, mixed $sequence): array => [
+                        'sequence' => (int) $sequence,
+                        'riddim_id' => $riddimId,
+                    ])
+                    ->values()
+                    ->all(),
+            ],
+            'vocabularies' => [
+                'tags' => $tags->map(fn (Tag $tag): array => [
+                    'id' => $tag->id,
+                    'name' => $tag->name,
+                ])->all(),
+                'riddims' => $riddims->map(fn (Riddim $riddim): array => [
+                    'id' => $riddim->id,
+                    'name' => $riddim->name,
+                ])->all(),
             ],
             'physical_copies' => $release->collectionItems
                 ->map(fn (CollectionItem $item): array => [
@@ -192,9 +243,15 @@ class CollectionCatalog
         ];
     }
 
-    /** @return array<string, mixed> */
-    private function discogsDetails(Release $release): array
-    {
+    /**
+     * @param  Collection<int, int>  $trackOverrides
+     * @return array<string, mixed>
+     */
+    private function discogsDetails(
+        Release $release,
+        ?int $releaseRiddimId,
+        Collection $trackOverrides,
+    ): array {
         return [
             'discogs_id' => $release->discogs_id,
             'title' => $release->title,
@@ -226,9 +283,12 @@ class CollectionCatalog
                 'descriptions' => $format->descriptions ?? [],
             ])->all(),
             'tracks' => $release->tracks->map(fn ($track): array => [
+                'sequence' => $track->sequence,
                 'position' => $track->position,
                 'title' => $track->title,
                 'duration' => $track->duration,
+                'effective_riddim_id' => $trackOverrides->get($track->sequence, $releaseRiddimId),
+                'is_riddim_override' => $trackOverrides->has($track->sequence),
             ])->all(),
             'videos' => $release->videos->map(fn (Video $video): array => [
                 'id' => $video->id,

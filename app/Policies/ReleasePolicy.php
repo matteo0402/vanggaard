@@ -22,6 +22,11 @@ class ReleasePolicy
         return $this->ownsActiveCopy($user, $release);
     }
 
+    public function updateVocabulary(User $user, Release $release): bool
+    {
+        return $this->ownsActiveCopy($user, $release);
+    }
+
     private function ownsActiveCopy(User $user, Release $release): bool
     {
         return $release->collectionItems()

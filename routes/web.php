@@ -5,6 +5,9 @@ use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PersonalReleaseMetadataController;
 use App\Http\Controllers\ReleaseRefreshController;
+use App\Http\Controllers\ReleaseVocabularyController;
+use App\Http\Controllers\RiddimController;
+use App\Http\Controllers\TagController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -40,5 +43,19 @@ Route::middleware('auth')->group(function () {
         ->name('releases.refresh');
     Route::patch('/releases/{release}/personal-metadata', PersonalReleaseMetadataController::class)
         ->name('releases.personal_metadata.update');
+    Route::put('/releases/{release}/vocabulary', [ReleaseVocabularyController::class, 'update'])
+        ->name('releases.release_vocabulary.update');
+    Route::post('/vocabularies/tags', [TagController::class, 'store'])
+        ->name('vocabularies.tags.store');
+    Route::patch('/vocabularies/tags/{tag}', [TagController::class, 'update'])
+        ->name('vocabularies.tags.update');
+    Route::delete('/vocabularies/tags/{tag}', [TagController::class, 'destroy'])
+        ->name('vocabularies.tags.destroy');
+    Route::post('/vocabularies/riddims', [RiddimController::class, 'store'])
+        ->name('vocabularies.riddims.store');
+    Route::patch('/vocabularies/riddims/{riddim}', [RiddimController::class, 'update'])
+        ->name('vocabularies.riddims.update');
+    Route::delete('/vocabularies/riddims/{riddim}', [RiddimController::class, 'destroy'])
+        ->name('vocabularies.riddims.destroy');
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });

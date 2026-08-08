@@ -1,10 +1,12 @@
 <?php
 
+use App\Events\PersonalMetadataChanged;
 use App\Models\CollectionItem;
 use App\Models\PersonalReleaseMetadata;
 use App\Models\Release;
 use App\Models\User;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Facades\Event;
 
 uses(LazilyRefreshDatabase::class);
 
@@ -12,6 +14,7 @@ test('an owner can save core personal metadata for a release', function () {
     $owner = User::factory()->create();
     $release = Release::factory()->create(['released_year' => 1976]);
     CollectionItem::factory()->for($owner)->for($release)->create();
+    Event::fake([PersonalMetadataChanged::class]);
 
     $this->actingAs($owner)
         ->patch(route('releases.personal_metadata.update', $release), [
@@ -38,6 +41,8 @@ test('an owner can save core personal metadata for a release', function () {
         ->and($metadata->energy)->toBe(4)
         ->and($metadata->bpm)->toBe(78.5)
         ->and($release->fresh()->released_year)->toBe(1976);
+    Event::assertDispatched(fn (PersonalMetadataChanged $event): bool => $event->userId === $owner->id
+        && $event->releaseId === $release->id);
 });
 
 test('an owner can clear optional metadata and boolean flags', function () {
