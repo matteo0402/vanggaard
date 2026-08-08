@@ -2,7 +2,9 @@
 
 namespace App;
 
+use App\Models\ArtistRelease;
 use App\Models\CollectionItem;
+use App\Models\LabelRelease;
 use App\Models\Release;
 use App\Models\StorageLocation;
 use App\Models\User;
@@ -13,8 +15,13 @@ use Illuminate\Support\Collection;
 class CollectionCatalog
 {
     /** @return LengthAwarePaginator<int, array<string, mixed>> */
-    public function for(User $user, ?string $search = null, int $page = 1): LengthAwarePaginator
-    {
+    public function for(
+        User $user,
+        ?string $search = null,
+        int $page = 1,
+        ?string $filter = null,
+        ?string $value = null,
+    ): LengthAwarePaginator {
         $search = filled($search) ? trim($search) : null;
 
         /** @var LengthAwarePaginator<int, Release> $releases */
@@ -22,6 +29,10 @@ class CollectionCatalog
             ->select(['id', 'title', 'released_year', 'source_url', 'fetched_at', 'image_urls', 'refresh_status'])
             ->whereIn('id', CollectionItem::query()->displayableFor($user)->select('release_id'))
             ->when($search, fn (Builder $query, string $search): Builder => $this->search($query, $user, $search))
+            ->when(
+                $filter && filled($value),
+                fn (Builder $query): Builder => $this->filter($query, $user, $filter, $value),
+            )
             ->with([
                 'collectionItems' => fn ($query) => $query
                     ->displayableFor($user)
@@ -149,6 +160,80 @@ class CollectionCatalog
                 ->whereBelongsTo($user)
                 ->whereLike('personal_notes', "%{$search}%"));
         });
+    }
+
+    /** @param Builder<Release> $query
+     * @return Builder<Release>
+     */
+    private function filter(Builder $query, User $user, string $filter, string $value): Builder
+    {
+        if (in_array($filter, ['artist', 'label'], true) && (! ctype_digit($value) || (int) $value < 1)) {
+            return $query;
+        }
+
+        return match ($filter) {
+            'artist' => $query
+                ->where('fetched_at', '>', now()->subHours(Release::DISPLAY_MAX_AGE_HOURS))
+                ->whereIn('id', ArtistRelease::query()
+                    ->where('artist_id', (int) $value)
+                    ->whereNull('retired_at')
+                    ->select('release_id')),
+            'label' => $query
+                ->where('fetched_at', '>', now()->subHours(Release::DISPLAY_MAX_AGE_HOURS))
+                ->whereIn('id', LabelRelease::query()
+                    ->where('label_id', (int) $value)
+                    ->whereNull('retired_at')
+                    ->select('release_id')),
+            'year' => $this->filterByYear($query, $user, $value),
+            'video' => $this->filterByVideo($query, $value),
+            'recently-added' => $query->orderByDesc(CollectionItem::query()
+                ->displayableFor($user)
+                ->whereColumn('release_id', 'releases.id')
+                ->selectRaw('max(created_at)')),
+            'recently-updated' => $query->orderByDesc('fetched_at'),
+            default => $query,
+        };
+    }
+
+    /** @param Builder<Release> $query
+     * @return Builder<Release>
+     */
+    private function filterByYear(Builder $query, User $user, string $value): Builder
+    {
+        if (! ctype_digit($value) || (int) $value < 1) {
+            return $query;
+        }
+
+        $year = (int) $value;
+
+        return $query->where(function (Builder $query) use ($user, $year): void {
+            $query->whereHas('personalMetadata', fn (Builder $query): Builder => $query
+                ->whereBelongsTo($user)
+                ->where('corrected_year', $year))
+                ->orWhere(function (Builder $query) use ($user, $year): void {
+                    $query->where('released_year', $year)
+                        ->where('fetched_at', '>', now()->subHours(Release::DISPLAY_MAX_AGE_HOURS))
+                        ->whereDoesntHave('personalMetadata', fn (Builder $query): Builder => $query
+                            ->whereBelongsTo($user)
+                            ->whereNotNull('corrected_year'));
+                });
+        });
+    }
+
+    /** @param Builder<Release> $query
+     * @return Builder<Release>
+     */
+    private function filterByVideo(Builder $query, string $value): Builder
+    {
+        if (! in_array($value, ['with', 'without'], true)) {
+            return $query;
+        }
+
+        $query->where('fetched_at', '>', now()->subHours(Release::DISPLAY_MAX_AGE_HOURS));
+
+        return $value === 'with'
+            ? $query->whereHas('videos', fn (Builder $query): Builder => $query->whereNull('retired_at'))
+            : $query->whereDoesntHave('videos', fn (Builder $query): Builder => $query->whereNull('retired_at'));
     }
 
     /** @return array<string, mixed> */

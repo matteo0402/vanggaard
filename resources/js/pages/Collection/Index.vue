@@ -38,7 +38,11 @@ defineProps<{
         prev_page_url: string | null;
         next_page_url: string | null;
     };
-    filters: { q: string | null };
+    filters: {
+        q: string | null;
+        filter: string | null;
+        value: string | null;
+    };
 }>();
 </script>
 
@@ -96,6 +100,24 @@ defineProps<{
                 Search collection
             </button>
         </Form>
+
+        <div
+            v-if="filters.filter && filters.value"
+            class="mt-4 flex items-center justify-between gap-4 rounded-xl border border-amber-400/20 bg-amber-400/8 px-4 py-3"
+        >
+            <p class="text-sm text-amber-100">
+                Browsing by
+                <span class="font-semibold capitalize">{{
+                    filters.filter
+                }}</span>
+            </p>
+            <Link
+                :href="collection({ query: { q: filters.q } })"
+                class="rounded-md text-sm font-semibold text-amber-300 underline decoration-amber-400/40 underline-offset-4 focus-visible:outline-3 focus-visible:outline-offset-3 focus-visible:outline-amber-400"
+            >
+                Clear filter
+            </Link>
+        </div>
 
         <div
             v-if="releases.data.length"
@@ -237,6 +259,8 @@ defineProps<{
                         query: {
                             page: releases.current_page - 1,
                             q: filters.q,
+                            filter: filters.filter,
+                            value: filters.value,
                         },
                     })
                 "
@@ -258,6 +282,8 @@ defineProps<{
                         query: {
                             page: releases.current_page + 1,
                             q: filters.q,
+                            filter: filters.filter,
+                            value: filters.value,
                         },
                     })
                 "

@@ -5,9 +5,9 @@ import { destroy } from '@/actions/App/Http/Controllers/AuthenticatedSessionCont
 import {
     assistant,
     boxes,
+    browse,
     collection,
     home,
-    labels,
     statistics,
 } from '@/routes';
 
@@ -18,7 +18,7 @@ const navigation = [
     { label: 'Collection', href: collection(), accent: 'Catalog + yours' },
     { label: 'DJ Assistant', href: assistant(), accent: 'Personal' },
     { label: 'Boxes', href: boxes(), accent: 'Personal' },
-    { label: 'Labels', href: labels(), accent: 'Catalog' },
+    { label: 'Browse', href: browse(), accent: 'Catalog + yours' },
     { label: 'Statistics', href: statistics(), accent: 'Catalog + yours' },
 ];
 

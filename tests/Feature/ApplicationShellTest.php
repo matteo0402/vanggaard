@@ -8,7 +8,7 @@ uses(RefreshDatabase::class);
 
 test('application shell destinations require authentication', function (string $route) {
     $this->get(route($route))->assertRedirectToRoute('login');
-})->with(['home', 'collection', 'assistant', 'boxes', 'labels', 'statistics']);
+})->with(['home', 'collection', 'browse', 'assistant', 'boxes', 'statistics']);
 
 test('the owner can open application shell destinations', function (
     string $route,
@@ -28,6 +28,5 @@ test('the owner can open application shell destinations', function (
 })->with([
     'DJ assistant' => ['assistant', 'DJ Assistant', 'personal'],
     'boxes' => ['boxes', 'Boxes', 'personal'],
-    'labels' => ['labels', 'Labels', 'discogs'],
     'statistics' => ['statistics', 'Statistics', 'mixed'],
 ]);

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthenticatedSessionController;
+use App\Http\Controllers\BrowseController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\ReleaseRefreshController;
@@ -15,6 +16,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/', HomeController::class)->name('home');
     Route::get('/collection', [CollectionController::class, 'index'])->name('collection');
     Route::get('/collection/{release}', [CollectionController::class, 'show'])->name('collection.show');
+    Route::get('/browse/{dimension?}', BrowseController::class)
+        ->where('dimension', 'labels|artists|years|recently-added|recently-updated|videos')
+        ->name('browse');
     Route::inertia('/dj-assistant', 'Section', [
         'title' => 'DJ Assistant',
         'description' => 'Build sets from records you own and the context you add.',
@@ -25,11 +29,6 @@ Route::middleware('auth')->group(function () {
         'description' => 'Find records by their real-world room, shelf, and box.',
         'dataKind' => 'personal',
     ])->name('boxes');
-    Route::inertia('/labels', 'Section', [
-        'title' => 'Labels',
-        'description' => 'Explore the labels represented across your collection.',
-        'dataKind' => 'discogs',
-    ])->name('labels');
     Route::inertia('/statistics', 'Section', [
         'title' => 'Statistics',
         'description' => 'See the shape, strengths, and gaps in your collection.',

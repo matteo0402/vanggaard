@@ -19,10 +19,18 @@ class CollectionController extends Controller
         /** @var User $user */
         $user = $request->user();
         $search = $request->string('q')->trim()->value() ?: null;
+        $filter = $request->string('filter')->value() ?: null;
+        $value = $request->string('value')->value() ?: null;
 
         return Inertia::render('Collection/Index', [
-            'releases' => $this->catalog->for($user, $search, max(1, $request->integer('page', 1))),
-            'filters' => ['q' => $search],
+            'releases' => $this->catalog->for(
+                $user,
+                $search,
+                max(1, $request->integer('page', 1)),
+                $filter,
+                $value,
+            ),
+            'filters' => ['q' => $search, 'filter' => $filter, 'value' => $value],
         ]);
     }
 
