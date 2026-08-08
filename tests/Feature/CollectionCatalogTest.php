@@ -10,6 +10,7 @@ use App\Models\Release;
 use App\Models\StorageLocation;
 use App\Models\Track;
 use App\Models\User;
+use App\Models\Video;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -137,6 +138,55 @@ test('release details show effective and Discogs values, ordered tracks, and cur
             ->where('release.discogs.tracks.1.title', 'Second'));
 });
 
+test('release videos are ordered and expose only safe playback URLs', function () {
+    $owner = User::factory()->create();
+    $release = Release::factory()->create();
+    CollectionItem::factory()->for($owner)->for($release)->create();
+
+    Video::factory()->for($release)->create([
+        'position' => 2,
+        'uri' => 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        'title' => 'Second video',
+    ]);
+    Video::factory()->for($release)->create([
+        'position' => 1,
+        'uri' => 'https://vimeo.com/123456',
+        'title' => 'External video',
+    ]);
+    Video::factory()->for($release)->create([
+        'position' => 0,
+        'uri' => 'https://youtu.be/abcdefghijk',
+        'title' => 'Private or non-embeddable video',
+        'embed' => false,
+    ]);
+    Video::factory()->for($release)->create([
+        'position' => 3,
+        'uri' => 'javascript:alert(1)',
+        'title' => 'Malformed video',
+    ]);
+    Video::factory()->for($release)->create([
+        'position' => 4,
+        'title' => 'Deleted or retired video',
+        'retired_at' => now(),
+    ]);
+
+    $this->actingAs($owner)
+        ->get(route('collection.show', $release))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('release.discogs.videos', 4)
+            ->where('release.discogs.videos.0.title', 'Private or non-embeddable video')
+            ->where('release.discogs.videos.0.external_url', 'https://youtu.be/abcdefghijk')
+            ->where('release.discogs.videos.0.embed_url', null)
+            ->where('release.discogs.videos.1.title', 'External video')
+            ->where('release.discogs.videos.1.external_url', 'https://vimeo.com/123456')
+            ->where('release.discogs.videos.1.embed_url', null)
+            ->where('release.discogs.videos.2.title', 'Second video')
+            ->where('release.discogs.videos.2.embed_url', 'https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ')
+            ->where('release.discogs.videos.3.external_url', null)
+            ->where('release.discogs.videos.3.embed_url', null));
+});
+
 test('stale release details suppress Discogs content but preserve personal inventory', function () {
     $owner = User::factory()->create();
     $release = Release::factory()->create([
@@ -170,6 +220,7 @@ test('owners cannot view releases outside their active collection', function () 
     $owner = User::factory()->create();
     $otherUsersRelease = CollectionItem::factory()->create()->release;
     $inactiveRelease = CollectionItem::factory()->inactive()->for($owner)->create()->release;
+    Video::factory()->for($otherUsersRelease)->create();
 
     $this->actingAs($owner)
         ->get(route('collection.show', $otherUsersRelease))
@@ -222,6 +273,7 @@ test('fresh release details support missing optional metadata', function () {
             ->where('release.discogs.labels', [])
             ->where('release.discogs.formats', [])
             ->where('release.discogs.tracks', [])
+            ->where('release.discogs.videos', [])
             ->where('release.personal.notes', null)
             ->where('release.physical_copies.0.locations', []));
 });
@@ -238,6 +290,14 @@ test('Discogs attribution links remain canonical and ranking-permitting', functi
         ->not->toContain('nofollow')
         ->and($index)->toContain('<DiscogsAttribution')
         ->and(substr_count($show, '<DiscogsAttribution'))->toBeGreaterThanOrEqual(2);
+});
+
+test('embedded videos retain an external fallback', function () {
+    $show = file_get_contents(resource_path('js/pages/Collection/Show.vue'));
+
+    expect($show)
+        ->toContain('Player unavailable? Open on YouTube')
+        ->toContain(':href="selectedVideo.external_url"');
 });
 
 test('catalog serialization does not lazy load relationships', function () {
